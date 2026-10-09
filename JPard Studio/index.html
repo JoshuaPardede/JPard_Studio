@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JPard Studio — Daily Short Video Director</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22%20%22100%22%20%22100%22><text y=%22.9em%22 font-size=%2290%22>🎬</text></svg>">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#fff7ed',
+              100: '#ffedd5',
+              400: '#fb923c',
+              500: '#f97316',
+              600: '#ea580c',
+              700: '#c2410c',
+            },
+            dark: {
+              bg: '#090a0f',
+              panel: '#10121d',
+              card: '#161928',
+              border: '#23273c',
+              hover: '#2a2f48'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-[#090a0f] text-slate-200 min-h-screen flex flex-col antialiased selection:bg-orange-500 selection:text-white">
+
+  <!-- Top Navigation Bar -->
+  <header class="sticky top-0 z-40 bg-[#0c0e17]/90 backdrop-blur-md border-b border-dark-border px-4 lg:px-8 py-3">
+    <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      
+      <!-- Brand & Title -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-orange-600 via-amber-500 to-yellow-400 flex items-center justify-center shadow-lg shadow-orange-500/20">
+          <i data-lucide="clapperboard" class="w-5 h-5 text-black stroke-[2.5]"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-extrabold tracking-wider text-white text-base">JPARD STUDIO</span>
+            <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">DAILY SHORT 60s</span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">Master Flow Director — Maximum Visual, Minimum Decision</p>
+        </div>
+      </div>
+
+      <!-- Live 3-Hour Timebox Tracker -->
+      <div class="flex items-center gap-3 bg-dark-panel/90 border border-dark-border px-3 py-1.5 rounded-xl shadow-inner">
+        <div class="flex items-center gap-2">
+          <span class="relative flex h-2.5 w-2.5">
+            <span id="timerPulse" class="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75 hidden"></span>
+            <span id="timerDot" class="relative inline-flex rounded-full h-2.5 w-2.5 bg-slate-500"></span>
+          </span>
+          <div class="flex flex-col">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">Timebox (Hard &lt;3h)</span>
+            <span id="timerDisplay" class="font-mono text-sm font-bold text-white tracking-widest">00:00:00</span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-1 border-l border-dark-border pl-2">
+          <button id="btnTimerToggle" title="Start/Pause Timer" class="p-1.5 text-slate-300 hover:text-orange-400 hover:bg-dark-hover rounded-lg transition">
+            <i id="timerIcon" data-lucide="play" class="w-4 h-4"></i>
+          </button>
+          <button id="btnTimerReset" title="Reset Timer" class="p-1.5 text-slate-400 hover:text-red-400 hover:bg-dark-hover rounded-lg transition">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Actions: Saved Projects & Settings -->
+      <div class="flex items-center gap-2">
+        <button id="btnNewProject" class="hidden sm:flex items-center gap-1.5 text-xs font-semibold px-3 py-2 bg-dark-panel hover:bg-dark-hover border border-dark-border rounded-xl text-slate-300 transition">
+          <i data-lucide="file-plus-2" class="w-4 h-4 text-orange-400"></i>
+          <span>Project Baru</span>
+        </button>
+
+        <button id="btnSavedProjects" class="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 bg-dark-panel hover:bg-dark-hover border border-dark-border rounded-xl text-slate-300 transition">
+          <i data-lucide="folder-archive" class="w-4 h-4 text-amber-400"></i>
+          <span class="hidden md:inline">Arsip</span>
+        </button>
+
+        <button id="btnSettings" class="flex items-center gap-1.5 text-xs font-semibold px-3 py-2 bg-dark-panel hover:bg-dark-hover border border-dark-border rounded-xl text-slate-300 transition">
+          <i data-lucide="settings" class="w-4 h-4 text-slate-400"></i>
+          <span id="apiStatusBadge" class="w-2 h-2 rounded-full bg-amber-400 inline-block" title="Gemini API Demo Mode"></span>
+          <span class="hidden md:inline">Config / API</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Step Navigation Bar -->
+  <div class="bg-[#0f121e]/80 border-b border-dark-border py-2 px-4 sticky top-[61px] z-30 backdrop-blur">
+    <div class="max-w-7xl mx-auto flex items-center justify-between gap-2 overflow-x-auto no-scrollbar">
+      
+      <button data-tab="tab-source" class="nav-tab active flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap bg-orange-600/20 text-orange-400 border border-orange-500/30">
+        <span class="w-5 h-5 rounded-full bg-orange-500 text-black flex items-center justify-center text-[11px] font-black">1</span>
+        <span>SOURCE INGEST</span>
+      </button>
+
+      <div class="w-4 h-[1px] bg-dark-border shrink-0"></div>
+
+      <button data-tab="tab-director" class="nav-tab flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-dark-panel transition whitespace-nowrap">
+        <span class="w-5 h-5 rounded-full bg-dark-card text-slate-300 flex items-center justify-center text-[11px] font-bold border border-dark-border">2</span>
+        <span>PRODUCTION PACK</span>
+      </button>
+
+      <div class="w-4 h-[1px] bg-dark-border shrink-0"></div>
+
+      <button data-tab="tab-scenes" class="nav-tab flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-dark-panel transition whitespace-nowrap">
+        <span class="w-5 h-5 rounded-full bg-dark-card text-slate-300 flex items-center justify-center text-[11px] font-bold border border-dark-border">3</span>
+        <span>6-SCENE STUDIO</span>
+        <span id="sceneCountBadge" class="text-[10px] bg-dark-border px-1.5 py-0.2 rounded-full text-slate-300">0/6</span>
+      </button>
+
+      <div class="w-4 h-[1px] bg-dark-border shrink-0"></div>
+
+      <button data-tab="tab-qc" class="nav-tab flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-dark-panel transition whitespace-nowrap">
+        <span class="w-5 h-5 rounded-full bg-dark-card text-slate-300 flex items-center justify-center text-[11px] font-bold border border-dark-border">4</span>
+        <span>QC &amp; FIX DOCTOR</span>
+      </button>
+
+      <div class="w-4 h-[1px] bg-dark-border shrink-0"></div>
+
+      <button data-tab="tab-assemble" class="nav-tab flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-dark-panel transition whitespace-nowrap">
+        <span class="w-5 h-5 rounded-full bg-dark-card text-slate-300 flex items-center justify-center text-[11px] font-bold border border-dark-border">5</span>
+        <span>ASSEMBLE &amp; EXPORT</span>
+      </button>
+
+    </div>
+  </div>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+
+    <!-- ========================================== -->
+    <!-- TAB 1: SOURCE INGEST & SOURCE PACK -->
+    <!-- ========================================== -->
+    <section id="tab-source" class="tab-content space-y-6">
+      
+      <!-- Banner / Principle -->
+      <div class="p-5 rounded-2xl bg-gradient-to-r from-orange-950/40 via-dark-panel to-dark-panel border border-orange-500/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <span class="text-[11px] font-bold tracking-wider uppercase text-orange-400">FASE 01 — DROP REFERENCE</span>
+          <h2 class="text-xl font-bold text-white mt-1">Jangan mulai dari &ldquo;Mau bikin video apa?&rdquo;</h2>
+          <p class="text-sm text-slate-400 mt-1">Cukup berikan 1 reference (video, transkrip, topik, artikel, atau ide acak). Biarkan AI mengompresinya menjadi Source Pack yang padat visual.</p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="text-xs text-slate-400">Target waktu:</span>
+          <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-orange-500/10 text-orange-300 border border-orange-500/20">00:00 - 00:15</span>
+        </div>
+      </div>
+
+      <!-- Input Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left Column: User Input Form -->
+        <div class="lg:col-span-5 space-y-5">
+          <div class="p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-4 shadow-xl">
+            
+            <div>
+              <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>Reference Input (Teks / Link / Transkrip / Ide)</span>
+                <span class="text-[10px] text-slate-400 normal-case font-normal">Bisa acak apa saja</span>
+              </label>
+              <textarea id="inputReference" rows="7" class="w-full bg-[#0a0c14] border border-dark-border focus:border-orange-500 rounded-xl p-3.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition resize-none font-sans" placeholder="Contoh:
+- Video dokumenter tentang bagaimana koloni semut membangun sarang bawah tanah raksasa yang rumit seperti kota manusia.
+- Atau link YouTube / TikTok / transkrip video.
+- Atau ide 1 kalimat: 'Astronaut menemukan struktur kubus raksasa menyala di planet merah.'"></textarea>
+            </div>
+
+            <!-- Quick Template Presets -->
+            <div>
+              <span class="text-[11px] font-semibold text-slate-400 block mb-2">Preset Referensi Cepat:</span>
+              <div class="flex flex-wrap gap-1.5">
+                <button type="button" class="btn-preset text-xs px-2.5 py-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 transition" data-preset="ants">
+                  🐜 Koloni Semut &amp; Kota Masa Depan
+                </button>
+                <button type="button" class="btn-preset text-xs px-2.5 py-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 transition" data-preset="astronaut">
+                  🚀 Astronaut &amp; Planet Misterius
+                </button>
+                <button type="button" class="btn-preset text-xs px-2.5 py-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 transition" data-preset="perfume">
+                  💎 Iklan Parfum Luxury
+                </button>
+              </div>
+            </div>
+
+            <!-- Theme / Style Selector -->
+            <div>
+              <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                Tema / Gaya Visual (Opsional)
+              </label>
+              <select id="selectTheme" class="w-full bg-[#0a0c14] border border-dark-border focus:border-orange-500 rounded-xl p-3 text-sm text-slate-200 focus:outline-none transition">
+                <option value="bebas">Bebas (AI Memilih Gaya Paling Menarik)</option>
+                <option value="dark sci-fi documentary">Dark Sci-Fi Documentary (Sinematik, Atmosferik)</option>
+                <option value="luxury commercial">Luxury Commercial (Elegance, Macro Shot, Clean)</option>
+                <option value="cinematic National Geographic">Cinematic National Geographic (Nature, Hyperrealism)</option>
+                <option value="cyberpunk neo-tokyo">Cyberpunk Neon (Wet streets, High contrast)</option>
+                <option value="historical epic documentary">Historical Epic (Ancient, 35mm Grain, Warm)</option>
+                <option value="dreamy surreal romance">Dreamy Surreal Romance (Soft glow, Pastel, Golden hour)</option>
+                <option value="custom">Kustom (Tulis Sendiri)</option>
+              </select>
+              <input id="inputCustomTheme" type="text" placeholder="Tulis tema kustom..." class="mt-2 w-full hidden bg-[#0a0c14] border border-dark-border focus:border-orange-500 rounded-xl p-2.5 text-sm text-slate-200 focus:outline-none transition">
+            </div>
+
+            <!-- Action Button -->
+            <button id="btnGenerateSourcePack" class="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-black font-extrabold text-sm flex items-center justify-center gap-2 shadow-lg shadow-orange-500/25 transition">
+              <i data-lucide="sparkles" class="w-4 h-4"></i>
+              <span>ANALISIS &amp; BUAT SOURCE PACK</span>
+            </button>
+
+          </div>
+        </div>
+
+        <!-- Right Column: Source Pack Output Result -->
+        <div class="lg:col-span-7 space-y-4">
+          <div class="p-6 rounded-2xl bg-dark-panel border border-dark-border min-h-[460px] flex flex-col justify-between shadow-xl">
+            
+            <div class="space-y-4">
+              <div class="flex items-center justify-between border-b border-dark-border pb-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-2.5 h-2.5 rounded-full bg-orange-500"></div>
+                  <h3 class="font-bold text-white text-base">SOURCE PACK (Visual Information Compression)</h3>
+                </div>
+                <span id="sourcePackStatus" class="text-xs font-mono text-slate-500">Menunggu Input</span>
+              </div>
+
+              <!-- Loading Skeleton / Placeholder -->
+              <div id="sourcePackPlaceholder" class="py-16 text-center space-y-3">
+                <div class="w-16 h-16 mx-auto rounded-2xl bg-dark-card border border-dark-border flex items-center justify-center text-slate-500">
+                  <i data-lucide="layers" class="w-8 h-8 stroke-1"></i>
+                </div>
+                <h4 class="text-base font-semibold text-slate-300">Belum ada Source Pack</h4>
+                <p class="text-xs text-slate-500 max-w-sm mx-auto">Masukkan referensi di sebelah kiri atau klik salah satu preset cepat untuk mengekstrak informasi visual kunci secara otomatis.</p>
+              </div>
+
+              <!-- Source Pack Content (Rendered Dynamically) -->
+              <div id="sourcePackResult" class="hidden space-y-4 text-sm">
+                <!-- Injected via JS -->
+              </div>
+            </div>
+
+            <!-- Bottom Action: Continue to Director -->
+            <div id="sourcePackFooter" class="hidden border-t border-dark-border pt-4 flex items-center justify-between mt-4">
+              <span class="text-xs text-slate-400">Siap melangkah ke fase berikutnya?</span>
+              <button id="btnProceedToDirector" class="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs flex items-center gap-2 transition shadow-md shadow-orange-600/30">
+                <span>Lanjut ke Fase 2: Production Pack</span>
+                <i data-lucide="arrow-right" class="w-4 h-4"></i>
+              </button>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 2: MASTER PRODUCTION PACK -->
+    <!-- ========================================== -->
+    <section id="tab-director" class="tab-content hidden space-y-6">
+      
+      <!-- Header Banner -->
+      <div class="p-5 rounded-2xl bg-gradient-to-r from-blue-950/40 via-dark-panel to-dark-panel border border-blue-500/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <span class="text-[11px] font-bold tracking-wider uppercase text-blue-400">FASE 02 — DIRECTOR &amp; CREATIVE LOCK</span>
+          <h2 class="text-xl font-bold text-white mt-1">Satu Keputusan, Mengunci Seluruh Produksi</h2>
+          <p class="text-sm text-slate-400 mt-1">Mengunci Continuity Level, Story Arc 6 Scene, Global Visual Lock (Lighting, Camera, Color) agar klip konsisten dari awal hingga akhir.</p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="text-xs text-slate-400">Target waktu:</span>
+          <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-300 border border-blue-500/20">00:15 - 00:30</span>
+        </div>
+      </div>
+
+      <!-- Controls & Master Pack View -->
+      <div class="space-y-6">
+        
+        <!-- Top Toolbar: Continuity Level & Trigger -->
+        <div class="p-5 rounded-2xl bg-dark-panel border border-dark-border flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div class="flex items-center gap-4 flex-wrap">
+            <div>
+              <span class="text-xs font-semibold text-slate-400 block mb-1">Continuity Level:</span>
+              <div class="inline-flex rounded-xl p-1 bg-[#0a0c14] border border-dark-border">
+                <button type="button" class="btn-level px-3 py-1.5 rounded-lg text-xs font-bold transition text-slate-400" data-level="A">
+                  Level A (Simple / Style)
+                </button>
+                <button type="button" class="btn-level px-3 py-1.5 rounded-lg text-xs font-bold transition text-slate-400" data-level="B">
+                  Level B (Character)
+                </button>
+                <button type="button" class="btn-level px-3 py-1.5 rounded-lg text-xs font-bold transition text-slate-400" data-level="C">
+                  Level C (Heavy / Product)
+                </button>
+              </div>
+            </div>
+
+            <div class="border-l border-dark-border pl-4 hidden md:block">
+              <span class="text-xs font-semibold text-slate-400 block mb-1">Format Video:</span>
+              <span class="text-xs font-mono text-slate-300 font-bold bg-[#0a0c14] px-2.5 py-1.5 rounded-lg border border-dark-border">9:16 Vertical • 6 Scene • ~60s</span>
+            </div>
+          </div>
+
+          <button id="btnBuildProductionPack" class="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-blue-600/30 transition">
+            <i data-lucide="film" class="w-4 h-4"></i>
+            <span>GENERATE MASTER PRODUCTION PACK</span>
+          </button>
+        </div>
+
+        <!-- Master Pack Details Container -->
+        <div id="masterPackContainer" class="p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-6">
+          <div id="masterPackEmpty" class="py-16 text-center space-y-3">
+            <div class="w-16 h-16 mx-auto rounded-2xl bg-dark-card border border-dark-border flex items-center justify-center text-slate-500">
+              <i data-lucide="film" class="w-8 h-8 stroke-1"></i>
+            </div>
+            <h4 class="text-base font-semibold text-slate-300">Master Production Pack Belum Dibuat</h4>
+            <p class="text-xs text-slate-500 max-w-sm mx-auto">Klik tombol &ldquo;Generate Master Production Pack&rdquo; di atas untuk menyusun rancangan kreatif dan mengunci aturan visual 6 scene.</p>
+          </div>
+
+          <div id="masterPackContent" class="hidden space-y-6">
+            <!-- Dynamically populated via app.js -->
+          </div>
+        </div>
+
+        <!-- Next Step Button -->
+        <div id="masterPackFooter" class="hidden flex justify-end">
+          <button id="btnProceedToScenes" class="px-6 py-3 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs flex items-center gap-2 transition shadow-lg shadow-orange-600/25">
+            <span>Buka 6-Scene Studio &amp; Prompts</span>
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 3: 6-SCENE PRODUCTION STUDIO -->
+    <!-- ========================================== -->
+    <section id="tab-scenes" class="tab-content hidden space-y-6">
+      
+      <!-- Header Banner -->
+      <div class="p-5 rounded-2xl bg-gradient-to-r from-amber-950/40 via-dark-panel to-dark-panel border border-amber-500/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <span class="text-[11px] font-bold tracking-wider uppercase text-amber-400">FASE 03 — 6-SCENE PRODUCTION ENGINE</span>
+          <h2 class="text-xl font-bold text-white mt-1">Master Frames &amp; Omni Video Prompts</h2>
+          <p class="text-sm text-slate-400 mt-1">Struktur tetap: <strong>Hook &rarr; Discovery &rarr; Escalation &rarr; Reveal &rarr; Payoff &rarr; Loop</strong>. Gunakan 1-Click Copy untuk generate di Midjourney/Flux &amp; Google Flow.</p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="text-xs text-slate-400">Target waktu:</span>
+          <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-300 border border-amber-500/20">00:30 - 02:00</span>
+        </div>
+      </div>
+
+      <!-- Quick Scene Navigation Pill Bar -->
+      <div class="flex items-center gap-2 overflow-x-auto pb-2 no-scrollbar">
+        <button class="scene-filter-pill active px-3.5 py-1.5 rounded-xl text-xs font-bold bg-dark-card border border-dark-border text-slate-300 hover:text-white transition whitespace-nowrap" data-scene="all">
+          Semua Scene (1-6)
+        </button>
+        <button class="scene-filter-pill px-3.5 py-1.5 rounded-xl text-xs font-bold bg-dark-panel border border-dark-border text-slate-400 hover:text-slate-200 transition whitespace-nowrap" data-scene="1">
+          Scene 01 • Hook
+        </button>
+        <button class="scene-filter-pill px-3.5 py-1.5 rounded-xl text-xs font-bold bg-dark-panel border border-dark-border text-slate-400 hover:text-slate-200 transition whitespace-nowrap" data-scene="2">
+          Scene 02 • Discovery
+        </button>
+        <button class="scene-filter-pill px-3.5 py-1.5 rounded-xl text-xs font-bold bg-dark-panel border border-dark-border text-slate-400 hover:text-slate-200 transition whitespace-nowrap" data-scene="3">
+          Scene 03 • Escalation
+        </button>
+        <button class="scene-filter-pill px-3.5 py-1.5 rounded-xl text-xs font-bold bg-dark-panel border border-dark-border text-slate-400 hover:text-slate-200 transition whitespace-nowrap" data-scene="4">
+          Scene 04 • Reveal
+        </button>
+        <button class="scene-filter-pill px-3.5 py-1.5 rounded-xl text-xs font-bold bg-dark-panel border border-dark-border text-slate-400 hover:text-slate-200 transition whitespace-nowrap" data-scene="5">
+          Scene 05 • Payoff
+        </button>
+        <button class="scene-filter-pill px-3.5 py-1.5 rounded-xl text-xs font-bold bg-dark-panel border border-dark-border text-slate-400 hover:text-slate-200 transition whitespace-nowrap" data-scene="6">
+          Scene 06 • Loop
+        </button>
+      </div>
+
+      <!-- Scene Cards Container -->
+      <div id="scenesContainer" class="space-y-6">
+        <div id="scenesEmpty" class="p-12 rounded-2xl bg-dark-panel border border-dark-border text-center space-y-3">
+          <div class="w-16 h-16 mx-auto rounded-2xl bg-dark-card border border-dark-border flex items-center justify-center text-slate-500">
+            <i data-lucide="clapperboard" class="w-8 h-8 stroke-1"></i>
+          </div>
+          <h4 class="text-base font-semibold text-slate-300">Belum Ada Prompt Scene</h4>
+          <p class="text-xs text-slate-500 max-w-sm mx-auto">Selesaikan Fase 1 &amp; Fase 2 terlebih dahulu untuk menghasilkan 6 Scene cards siap pakai.</p>
+        </div>
+
+        <div id="scenesList" class="hidden space-y-6">
+          <!-- Dynamically populated with 6 Scene Cards -->
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 4: 4-POINT QC & EMERGENCY DOCTOR -->
+    <!-- ========================================== -->
+    <section id="tab-qc" class="tab-content hidden space-y-6">
+      
+      <!-- Header Banner -->
+      <div class="p-5 rounded-2xl bg-gradient-to-r from-red-950/40 via-dark-panel to-dark-panel border border-red-500/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <span class="text-[11px] font-bold tracking-wider uppercase text-red-400">FASE 04 — QUALITY CONTROL &amp; DIAGNOSTIC DOCTOR</span>
+          <h2 class="text-xl font-bold text-white mt-1">4-Point QC &amp; Aturan 3/4 Lolos = KEEP</h2>
+          <p class="text-sm text-slate-400 mt-1">Jangan regenerate demi &ldquo;10% lebih bagus&rdquo;. Jika ada scene yang gagal total, gunakan Diagnostic Doctor untuk memperbaiki tanpa merusak kesinambungan cerita.</p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="text-xs text-slate-400">Target waktu:</span>
+          <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-red-500/10 text-red-300 border border-red-500/20">02:00 - 02:30</span>
+        </div>
+      </div>
+
+      <!-- Two-Column Grid: QC Table & Diagnostic Tool -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left: 4-Point QC Status Matrix -->
+        <div class="lg:col-span-6 space-y-4">
+          <div class="p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-5 shadow-xl">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+              <div>
+                <h3 class="font-bold text-white text-base">4-Point QC Matrix</h3>
+                <p class="text-xs text-slate-400">Centang poin yang lolos. 3 dari 4 lolos = KEEP!</p>
+              </div>
+              <span id="qcOverallBadge" class="text-xs font-mono font-bold px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">0/6 Siap</span>
+            </div>
+
+            <!-- QC Scenes List -->
+            <div id="qcScenesMatrix" class="space-y-3">
+              <!-- Dynamically populated per scene -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Emergency Diagnostic Doctor -->
+        <div class="lg:col-span-6 space-y-4">
+          <div class="p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-4 shadow-xl">
+            <div class="flex items-center gap-2 border-b border-dark-border pb-3">
+              <div class="w-8 h-8 rounded-lg bg-red-500/20 border border-red-500/30 flex items-center justify-center text-red-400">
+                <i data-lucide="stethoscope" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-white text-base">Emergency Diagnostic Doctor</h3>
+                <p class="text-xs text-slate-400">Diagnosis kegagalan generasi &amp; buat Prompt V2 instan</p>
+              </div>
+            </div>
+
+            <!-- Scene Selector -->
+            <div>
+              <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                Pilih Scene yang Gagal:
+              </label>
+              <select id="selectFixScene" class="w-full bg-[#0a0c14] border border-dark-border focus:border-red-500 rounded-xl p-3 text-sm text-slate-200 focus:outline-none transition">
+                <option value="1">Scene 01 — Hook</option>
+                <option value="2">Scene 02 — Discovery</option>
+                <option value="3">Scene 03 — Escalation</option>
+                <option value="4">Scene 04 — Reveal</option>
+                <option value="5">Scene 05 — Payoff</option>
+                <option value="6">Scene 06 — Ending / Loop</option>
+              </select>
+            </div>
+
+            <!-- Common Failure Quick Presets -->
+            <div>
+              <span class="text-[11px] font-semibold text-slate-400 block mb-2">Preset Masalah Umum:</span>
+              <div class="grid grid-cols-2 gap-2">
+                <button type="button" class="btn-error-preset text-xs p-2 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 text-left transition flex items-center gap-2" data-error="hands">
+                  <span>🖐️</span>
+                  <span>Tangan Cacat / Error</span>
+                </button>
+                <button type="button" class="btn-error-preset text-xs p-2 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 text-left transition flex items-center gap-2" data-error="face">
+                  <span>👤</span>
+                  <span>Wajah / Identitas Berubah</span>
+                </button>
+                <button type="button" class="btn-error-preset text-xs p-2 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 text-left transition flex items-center gap-2" data-error="camera">
+                  <span>🎥</span>
+                  <span>Kamera Liar / Terlalu Cepat</span>
+                </button>
+                <button type="button" class="btn-error-preset text-xs p-2 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 text-left transition flex items-center gap-2" data-error="speed">
+                  <span>⚡</span>
+                  <span>Gerakan Tidak Natural</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Custom Problem Description -->
+            <div>
+              <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                Deskripsi Kendala yang Terjadi:
+              </label>
+              <textarea id="inputFixIssue" rows="3" class="w-full bg-[#0a0c14] border border-dark-border focus:border-red-500 rounded-xl p-3 text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition resize-none" placeholder="Contoh: Pada detik ke-5 tangannya berubah jadi 6 jari dan kamera mendadak zoom terlalu cepat..."></textarea>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex items-center gap-2 pt-2">
+              <button id="btnDiagnoseFix" class="flex-1 py-3 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-red-600/30">
+                <i data-lucide="zap" class="w-4 h-4"></i>
+                <span>DIAGNOSIS &amp; GENERATE PROMPT V2</span>
+              </button>
+              <button id="btnSimplifyShot" class="py-3 px-4 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 font-bold text-xs flex items-center gap-1.5 transition" title="Sederhanakan shot">
+                <i data-lucide="minimize-2" class="w-4 h-4"></i>
+                <span class="hidden sm:inline">Simplify Shot</span>
+              </button>
+            </div>
+
+            <!-- Diagnosis Output Box -->
+            <div id="diagnosisResultBox" class="hidden mt-4 p-4 rounded-xl bg-[#090b12] border border-dark-border space-y-3 text-xs">
+              <!-- Dynamically populated -->
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+
+    <!-- ========================================== -->
+    <!-- TAB 5: ASSEMBLE, VOICEOVER & EXPORT -->
+    <!-- ========================================== -->
+    <section id="tab-assemble" class="tab-content hidden space-y-6">
+      
+      <!-- Header Banner -->
+      <div class="p-5 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-dark-panel to-dark-panel border border-emerald-500/20 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <span class="text-[11px] font-bold tracking-wider uppercase text-emerald-400">FASE 05 — ASSEMBLE, AUDIO &amp; POST PRODUCTION</span>
+          <h2 class="text-xl font-bold text-white mt-1">Editing Cepat, CapCut &amp; Export</h2>
+          <p class="text-sm text-slate-400 mt-1">Kumpulkan seluruh script voiceover, SFX cues, dan checklist QC akhir. Stop optimizing &amp; langsung posting!</p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="text-xs text-slate-400">Target waktu:</span>
+          <span class="text-xs font-mono font-bold px-2.5 py-1 rounded-lg bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">02:30 - 03:00</span>
+        </div>
+      </div>
+
+      <!-- Assemble Content Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left: Audio & Voiceover Script -->
+        <div class="lg:col-span-7 space-y-5">
+          <div class="p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-4 shadow-xl">
+            <div class="flex items-center justify-between border-b border-dark-border pb-3">
+              <div class="flex items-center gap-2">
+                <i data-lucide="mic" class="w-4 h-4 text-emerald-400"></i>
+                <h3 class="font-bold text-white text-base">Voiceover &amp; SFX Cue Sheet</h3>
+              </div>
+              <button id="btnCopyVoiceover" class="text-xs font-semibold px-2.5 py-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 flex items-center gap-1 transition">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                <span>Copy Script</span>
+              </button>
+            </div>
+
+            <div id="voiceoverScriptContent" class="space-y-4 text-xs">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Pre-Post Checklist & Export Suite -->
+        <div class="lg:col-span-5 space-y-5">
+          
+          <!-- Pre-Post QC Checklist -->
+          <div class="p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-4 shadow-xl">
+            <div class="flex items-center gap-2 border-b border-dark-border pb-3">
+              <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+              <h3 class="font-bold text-white text-base">Pre-Post Checklist</h3>
+            </div>
+
+            <div class="space-y-2.5 text-xs text-slate-300">
+              <label class="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" class="rounded bg-dark-card border-dark-border text-emerald-500 focus:ring-0 mt-0.5">
+                <span><strong>2 Detik Pertama Menarik:</strong> Hook langsung membuat viewer berhenti scroll?</span>
+              </label>
+              <label class="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" class="rounded bg-dark-card border-dark-border text-emerald-500 focus:ring-0 mt-0.5">
+                <span><strong>Storyline Jelas:</strong> Visual menyampaikan cerita tanpa harus bergantung pada teks panjang?</span>
+              </label>
+              <label class="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" class="rounded bg-dark-card border-dark-border text-emerald-500 focus:ring-0 mt-0.5">
+                <span><strong>Pacing &amp; Dead Moment:</strong> Tidak ada scene yang membosankan atau terlalu lambat?</span>
+              </label>
+              <label class="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" class="rounded bg-dark-card border-dark-border text-emerald-500 focus:ring-0 mt-0.5">
+                <span><strong>Ending Loop:</strong> Klip 6 berakhir rapi atau menyambung kembali ke Klip 1?</span>
+              </label>
+              <label class="flex items-start gap-2.5 cursor-pointer">
+                <input type="checkbox" class="rounded bg-dark-card border-dark-border text-emerald-500 focus:ring-0 mt-0.5">
+                <span><strong>Audio &amp; SFX:</strong> Musik tidak menenggelamkan voiceover, SFX tepat pada impact visual?</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Export Project Options -->
+          <div class="p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-4 shadow-xl">
+            <h3 class="font-bold text-white text-base">Ekspor Paket Lengkap</h3>
+            <p class="text-xs text-slate-400">Simpan seluruh dokumentasi produksi harian ini ke dalam format pilihan Anda:</p>
+
+            <div class="space-y-2">
+              <button id="btnExportMarkdown" class="w-full py-2.5 px-3 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-200 text-xs font-bold flex items-center justify-between transition">
+                <span class="flex items-center gap-2">
+                  <i data-lucide="file-text" class="w-4 h-4 text-orange-400"></i>
+                  <span>Copy Full Project (Markdown)</span>
+                </span>
+                <i data-lucide="copy" class="w-3.5 h-3.5 text-slate-400"></i>
+              </button>
+
+              <button id="btnExportJSON" class="w-full py-2.5 px-3 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-200 text-xs font-bold flex items-center justify-between transition">
+                <span class="flex items-center gap-2">
+                  <i data-lucide="download" class="w-4 h-4 text-blue-400"></i>
+                  <span>Download Backup File (JSON)</span>
+                </span>
+                <i data-lucide="arrow-down-to-line" class="w-3.5 h-3.5 text-slate-400"></i>
+              </button>
+
+              <button id="btnPrintProject" class="w-full py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/25 transition">
+                <i data-lucide="printer" class="w-4 h-4"></i>
+                <span>Cetak / Simpan PDF Lembar Kerja</span>
+              </button>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- ========================================== -->
+  <!-- MODALS -->
+  <!-- ========================================== -->
+
+  <!-- Settings / API Key Modal -->
+  <div id="modalSettings" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-dark-panel border border-dark-border rounded-2xl max-w-md w-full p-6 space-y-5 shadow-2xl relative">
+      <div class="flex items-center justify-between border-b border-dark-border pb-3">
+        <div class="flex items-center gap-2">
+          <i data-lucide="key" class="w-5 h-5 text-orange-400"></i>
+          <h3 class="font-bold text-white text-base">Konfigurasi Gemini API</h3>
+        </div>
+        <button id="btnCloseSettings" class="text-slate-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4 text-xs">
+        <div>
+          <label class="block font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+            Google Gemini API Key
+          </label>
+          <input id="inputApiKey" type="password" placeholder="AIzaSy..." class="w-full bg-[#0a0c14] border border-dark-border focus:border-orange-500 rounded-xl p-3 text-slate-200 font-mono text-sm focus:outline-none transition">
+          <p class="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+            API Key Anda disimpan <strong>hanya di browser (LocalStorage)</strong> secara aman. Tidak pernah dikirim ke server pihak ketiga manapun.
+          </p>
+        </div>
+
+        <div class="p-3 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-300 flex items-start gap-2.5">
+          <i data-lucide="info" class="w-4 h-4 shrink-0 mt-0.5"></i>
+          <p class="leading-relaxed">
+            Belum punya API Key? Anda bisa dapatkan <strong>100% Gratis</strong> di <a href="https://aistudio.google.com/app/apikey" target="_blank" class="underline font-bold text-orange-400 hover:text-orange-300">Google AI Studio</a>. Atau kosongkan untuk menggunakan <em>Generator Cerdas Bawaan</em>.
+          </p>
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+            Pilihan Model Gemini
+          </label>
+          <select id="selectModel" class="w-full bg-[#0a0c14] border border-dark-border focus:border-orange-500 rounded-xl p-2.5 text-slate-200 focus:outline-none transition">
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Tercepat &amp; Direkomendasikan)</option>
+            <option value="gemini-1.5-flash">Gemini 1.5 Flash (Sangat Stabil)</option>
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 pt-2 border-t border-dark-border">
+        <button id="btnSaveSettings" class="w-full py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs transition">
+          Simpan Konfigurasi
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Saved Projects Modal -->
+  <div id="modalSavedProjects" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-dark-panel border border-dark-border rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl relative max-h-[80vh] flex flex-col">
+      <div class="flex items-center justify-between border-b border-dark-border pb-3">
+        <div class="flex items-center gap-2">
+          <i data-lucide="folder-archive" class="w-5 h-5 text-amber-400"></i>
+          <h3 class="font-bold text-white text-base">Arsip Proyek Harian</h3>
+        </div>
+        <button id="btnCloseSavedProjects" class="text-slate-400 hover:text-white p-1">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div id="savedProjectsList" class="flex-1 overflow-y-auto space-y-2.5 pr-1 text-xs">
+        <!-- Dynamically rendered -->
+      </div>
+
+      <div class="pt-3 border-t border-dark-border flex justify-end">
+        <button id="btnImportJSON" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 flex items-center gap-1.5 transition">
+          <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+          <span>Import File JSON</span>
+        </button>
+        <input id="inputImportFile" type="file" accept=".json" class="hidden">
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 bg-orange-500 text-black font-extrabold px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs transition-all duration-300 transform translate-y-12 opacity-0 pointer-events-none">
+    <i data-lucide="check-circle" class="w-4 h-4"></i>
+    <span id="toastMsg">Tersalin ke Clipboard!</span>
+  </div>
+
+  <!-- Application Script -->
+  <script src="app.js"></script>
+</body>
+</html>
