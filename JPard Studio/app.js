@@ -21,6 +21,8 @@ const DEFAULT_PROJECT = {
   date: '',
   title: 'Untitled Daily Short',
   sourceInput: '',
+  imageReference: null,
+  soundtrack: null,
   theme: 'bebas',
   continuityLevel: 'B',
   sourcePack: null,
@@ -90,6 +92,13 @@ const els = {
 
   // Tab 1: Source
   inputReference: document.getElementById('inputReference'),
+  imageDropzone: document.getElementById('imageDropzone'),
+  inputImageRef: document.getElementById('inputImageRef'),
+  imageDropPrompt: document.getElementById('imageDropPrompt'),
+  imagePreviewContainer: document.getElementById('imagePreviewContainer'),
+  imagePreviewImg: document.getElementById('imagePreviewImg'),
+  btnRemoveImage: document.getElementById('btnRemoveImage'),
+  imageInfoText: document.getElementById('imageInfoText'),
   selectTheme: document.getElementById('selectTheme'),
   inputCustomTheme: document.getElementById('inputCustomTheme'),
   btnPreset: document.querySelectorAll('.btn-preset'),
@@ -105,10 +114,15 @@ const els = {
   btnBuildProductionPack: document.getElementById('btnBuildProductionPack'),
   masterPackEmpty: document.getElementById('masterPackEmpty'),
   masterPackContent: document.getElementById('masterPackContent'),
+  soundtrackContainer: document.getElementById('soundtrackContainer'),
+  btnGenerateSoundtrack: document.getElementById('btnGenerateSoundtrack'),
+  soundtrackResultBox: document.getElementById('soundtrackResultBox'),
   masterPackFooter: document.getElementById('masterPackFooter'),
   btnProceedToScenes: document.getElementById('btnProceedToScenes'),
 
   // Tab 3: Scenes
+  selectImageEngine: document.getElementById('selectImageEngine'),
+  btnGenerateAllImages: document.getElementById('btnGenerateAllImages'),
   scenesEmpty: document.getElementById('scenesEmpty'),
   scenesList: document.getElementById('scenesList'),
   sceneFilterPills: document.querySelectorAll('.scene-filter-pill'),
@@ -129,6 +143,12 @@ const els = {
   btnExportMarkdown: document.getElementById('btnExportMarkdown'),
   btnExportJSON: document.getElementById('btnExportJSON'),
   btnPrintProject: document.getElementById('btnPrintProject'),
+
+  // Modal Image Preview
+  modalImagePreview: document.getElementById('modalImagePreview'),
+  btnCloseImageModal: document.getElementById('btnCloseImageModal'),
+  modalPreviewImg: document.getElementById('modalPreviewImg'),
+  btnDownloadModalImg: document.getElementById('btnDownloadModalImg'),
 
   // Toast
   toast: document.getElementById('toast'),
@@ -214,9 +234,48 @@ function setupEventListeners() {
     });
   });
 
+  // Image Reference Dropzone
+  els.imageDropzone?.addEventListener('click', (e) => {
+    if (e.target !== els.btnRemoveImage && !els.btnRemoveImage?.contains(e.target)) {
+      els.inputImageRef.click();
+    }
+  });
+
+  els.inputImageRef?.addEventListener('change', handleImageUpload);
+
+  els.imageDropzone?.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    els.imageDropzone.classList.add('border-orange-500');
+  });
+
+  els.imageDropzone?.addEventListener('dragleave', () => {
+    els.imageDropzone.classList.remove('border-orange-500');
+  });
+
+  els.imageDropzone?.addEventListener('drop', (e) => {
+    e.preventDefault();
+    els.imageDropzone.classList.remove('border-orange-500');
+    if (e.dataTransfer.files?.[0]) {
+      processImageFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  els.btnRemoveImage?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    removeImageRef();
+  });
+
   // Action Buttons
   els.btnGenerateSourcePack?.addEventListener('click', handleGenerateSourcePack);
   els.btnBuildProductionPack?.addEventListener('click', handleGenerateProductionPack);
+  els.btnGenerateSoundtrack?.addEventListener('click', handleGenerateSoundtrack);
+  els.btnGenerateAllImages?.addEventListener('click', handleGenerateAllMasterFrames);
+
+  // Fullscreen Image Modal
+  els.btnCloseImageModal?.addEventListener('click', () => els.modalImagePreview?.classList.add('hidden'));
+  els.modalImagePreview?.addEventListener('click', (e) => {
+    if (e.target === els.modalImagePreview) els.modalImagePreview?.classList.add('hidden');
+  });
 
   // Scene filter pills
   els.sceneFilterPills.forEach(pill => {
@@ -851,6 +910,7 @@ function applyPreset(presetKey) {
   state.project.masterPack = pack.masterPack;
   state.project.scenes = pack.scenes;
   state.project.title = pack.masterPack.title;
+  state.project.soundtrack = generateSmartSoundtrack(pack.masterPack, pack.scenes);
 
   saveCurrentProject();
   renderAll();
@@ -871,7 +931,7 @@ function updateApiBadge() {
   }
 }
 
-async function callGemini(promptText, systemInstruction = '') {
+async function callGemini(promptText, systemInstruction = '', inlineDataParts = []) {
   if (!state.apiKey || state.apiKey.trim().length < 10) {
     // Return null to indicate offline mock fallback should be used
     return null;
@@ -879,10 +939,15 @@ async function callGemini(promptText, systemInstruction = '') {
 
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:generateContent?key=${encodeURIComponent(state.apiKey.trim())}`;
 
+  const parts = [{ text: promptText }];
+  if (inlineDataParts && inlineDataParts.length > 0) {
+    inlineDataParts.forEach(p => parts.push(p));
+  }
+
   const payload = {
     contents: [
       {
-        parts: [{ text: promptText }]
+        parts: parts
       }
     ]
   };
@@ -906,7 +971,7 @@ async function callGemini(promptText, systemInstruction = '') {
       if (state.model !== 'gemini-3.8-flash') {
         state.model = 'gemini-3.8-flash';
         localStorage.setItem(STORAGE_KEYS.MODEL, 'gemini-3.8-flash');
-        return callGemini(promptText, systemInstruction);
+        return callGemini(promptText, systemInstruction, inlineDataParts);
       }
     }
     throw new Error(errMsg);
@@ -920,8 +985,10 @@ async function callGemini(promptText, systemInstruction = '') {
 // Handler: Generate Source Pack (Phase 1)
 async function handleGenerateSourcePack() {
   const input = els.inputReference.value.trim();
-  if (!input) {
-    showToast('Silakan masukkan referensi teks atau pilih preset terlebih dahulu!');
+  const hasImage = !!(state.project.imageReference && state.project.imageReference.data);
+
+  if (!input && !hasImage) {
+    showToast('Silakan masukkan referensi teks atau upload foto referensi!');
     return;
   }
 
@@ -937,12 +1004,13 @@ async function handleGenerateSourcePack() {
     let sourcePackData = null;
 
     if (state.apiKey && state.apiKey.trim().length > 10) {
-      // Live Gemini API Call
-      const sysPrompt = `You are an elite creative AI Director specialized in 60-second viral short video production. Your goal is to analyze reference material and extract a compressed, high-density SOURCE PACK according to the Master Flow guidelines. Respond strictly with valid JSON conforming to the requested schema.`;
+      // Live Gemini Multimodal Call
+      const sysPrompt = `You are an elite creative AI Director specialized in 60-second viral short video production. Your goal is to analyze reference material (text and/or reference image) and extract a compressed, high-density SOURCE PACK according to the Master Flow guidelines. Respond strictly with valid JSON conforming to the requested schema.`;
       
       const userPrompt = `Analyze this reference for a 60-second AI Short Video.
-Reference: "${input}"
+Reference Text: "${input || '(Lihat foto referensi terlampir)'}"
 Theme constraint: "${theme}"
+${hasImage ? 'CRITICAL: A visual reference image is attached. Closely inspect the image (subject appearance, colors, lighting, textures, environment, materials, product design) and ensure the SOURCE PACK and future scenes strictly align with this visual anchor.' : ''}
 
 Extract the SOURCE PACK. Output ONLY a valid JSON object matching this exact structure:
 {
@@ -972,7 +1040,17 @@ Extract the SOURCE PACK. Output ONLY a valid JSON object matching this exact str
   "primaryDirection": "Recommended primary angle"
 }`;
 
-      const rawJson = await callGemini(userPrompt, sysPrompt);
+      let inlineParts = [];
+      if (hasImage) {
+        inlineParts.push({
+          inlineData: {
+            mimeType: state.project.imageReference.mimeType || 'image/jpeg',
+            data: state.project.imageReference.data
+          }
+        });
+      }
+
+      const rawJson = await callGemini(userPrompt, sysPrompt, inlineParts);
       if (rawJson) {
         const cleaned = rawJson.replace(/```json/g, '').replace(/```/g, '').trim();
         sourcePackData = JSON.parse(cleaned);
@@ -1205,6 +1283,247 @@ function applyErrorPreset(type) {
   els.inputFixIssue.value = presets[type] || '';
 }
 
+// ------------------------------------------
+// MULTIMODAL IMAGE REFERENCE HANDLERS
+// ------------------------------------------
+
+function handleImageUpload(e) {
+  const file = e.target.files?.[0];
+  if (file) {
+    processImageFile(file);
+  }
+}
+
+function processImageFile(file) {
+  if (!file.type.startsWith('image/')) {
+    showToast('Harap pilih file gambar (.jpg, .png, .webp)!');
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    showToast('Ukuran gambar maksimal 10MB.');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const dataUrl = event.target.result;
+    const base64Data = dataUrl.split(',')[1];
+    state.project.imageReference = {
+      name: file.name,
+      size: file.size,
+      mimeType: file.type,
+      dataUrl: dataUrl,
+      data: base64Data
+    };
+    saveCurrentProject();
+    renderImageRefUI();
+    showToast('Foto referensi visual berhasil dimuat!');
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeImageRef() {
+  state.project.imageReference = null;
+  if (els.inputImageRef) els.inputImageRef.value = '';
+  saveCurrentProject();
+  renderImageRefUI();
+  showToast('Foto referensi dihapus.');
+}
+
+// ------------------------------------------
+// AI SOUNDTRACK & MUSIC GENERATOR (SUNO / UDIO)
+// ------------------------------------------
+
+async function handleGenerateSoundtrack() {
+  if (!state.project.masterPack) {
+    showToast('Selesaikan Fase 02 (Master Production Pack) terlebih dahulu!');
+    return;
+  }
+
+  els.btnGenerateSoundtrack.disabled = true;
+  els.btnGenerateSoundtrack.innerHTML = `<span class="animate-spin inline-block mr-1.5">⏳</span> Merancang Soundtrack AI...`;
+
+  try {
+    let soundtrackData = null;
+
+    if (state.apiKey && state.apiKey.trim().length > 10) {
+      const sysPrompt = `You are an elite film composer and AI music director specialized in 60-second cinematic short video scoring (Suno AI & Udio). You create tightly synchronized music prompts matching a 6-scene story progression. Output strictly valid JSON.`;
+
+      const userPrompt = `Create a 60-second soundtrack prompt for Suno AI and Udio based on this video:
+Title: "${state.project.masterPack.title}"
+Concept: "${state.project.masterPack.concept}"
+Genre: "${state.project.masterPack.genre}"
+Visual Style: "${state.project.masterPack.visualStyle}"
+Tone: "${state.project.masterPack.tone}"
+
+6 Scenes Arc:
+${(state.project.scenes || []).map(s => `Scene ${s.number} (${s.title}): ${s.storyFunction} | SFX: ${s.sfx}`).join('\n')}
+
+Output ONLY valid JSON matching this exact structure:
+{
+  "title": "Title of the soundtrack",
+  "genreTags": "Genre tags for Suno/Udio, e.g. Cinematic Dark Sci-Fi, Sub-bass, 88 BPM, Masterpiece",
+  "bpm": "Tempo e.g. 88 BPM",
+  "mood": "Mood description",
+  "instruments": "Key instruments used",
+  "fullPrompt": "Full copy-pasteable prompt for Suno AI or Udio with section tags and 60-second timeline cues",
+  "sceneTimeline": [
+    { "scene": 1, "time": "00:00 - 00:10", "cue": "Musical cue description for Scene 1" },
+    { "scene": 2, "time": "00:10 - 00:20", "cue": "Musical cue description for Scene 2" },
+    { "scene": 3, "time": "00:20 - 00:30", "cue": "Musical cue description for Scene 3" },
+    { "scene": 4, "time": "00:30 - 00:40", "cue": "Musical cue description for Scene 4" },
+    { "scene": 5, "time": "00:40 - 00:50", "cue": "Musical cue description for Scene 5" },
+    { "scene": 6, "time": "00:50 - 01:00", "cue": "Musical cue description for Scene 6" }
+  ]
+}`;
+
+      const rawJson = await callGemini(userPrompt, sysPrompt);
+      if (rawJson) {
+        const cleaned = rawJson.replace(/```json/g, '').replace(/```/g, '').trim();
+        soundtrackData = JSON.parse(cleaned);
+      }
+    }
+
+    if (!soundtrackData) {
+      soundtrackData = generateSmartSoundtrack(state.project.masterPack, state.project.scenes);
+    }
+
+    state.project.soundtrack = soundtrackData;
+    saveCurrentProject();
+    renderSoundtrackUI();
+    showToast('Soundtrack & Music Prompt berhasil dibuat!');
+  } catch (err) {
+    console.error(err);
+    showToast(`Error: ${err.message}. Menggunakan aransemen pintar.`);
+    const fallback = generateSmartSoundtrack(state.project.masterPack, state.project.scenes);
+    state.project.soundtrack = fallback;
+    saveCurrentProject();
+    renderSoundtrackUI();
+  } finally {
+    els.btnGenerateSoundtrack.disabled = false;
+    els.btnGenerateSoundtrack.innerHTML = `<i data-lucide="sparkles" class="w-3.5 h-3.5"></i><span>Generate Music Prompt</span>`;
+    lucide.createIcons();
+  }
+}
+
+// ------------------------------------------
+// AI IMAGE GENERATOR ENGINE (BANANA PRO & FLUX)
+// ------------------------------------------
+
+async function callImageGeneration(promptText, aspectRatio = '9:16') {
+  const engine = els.selectImageEngine?.value || 'banana-pro';
+
+  // Sanitize prompt text for text-to-image
+  const cleanPrompt = promptText
+    .replace(/--ar\s+9:16/gi, '')
+    .replace(/--no\s+[^,]+/gi, '')
+    .trim();
+
+  // Tier 1: Gemini Interactions API / Banana Pro if API key provided
+  if (engine === 'banana-pro' && state.apiKey && state.apiKey.trim().length > 10) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/interactions`;
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'x-goog-api-key': state.apiKey.trim(),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gemini-3.1-flash-image',
+          input: [
+            { type: 'text', text: `${cleanPrompt}, 9:16 vertical aspect ratio, 8k resolution, cinematic masterpiece` }
+          ]
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const base64Data = data?.output_image?.data || data?.interaction?.output_image?.data;
+        if (base64Data) {
+          return `data:image/png;base64,${base64Data}`;
+        }
+      }
+    } catch (e) {
+      console.warn('Banana Pro API attempt failed, falling back to Flux Pro:', e);
+    }
+  }
+
+  // Tier 2: Pollinations Flux Engine (High-Resolution 9:16 Vertical Instant Free Engine)
+  const seed = Math.floor(Math.random() * 900000) + 100000;
+  const encoded = encodeURIComponent(`${cleanPrompt}, 8k resolution, cinematic lighting, 35mm film photography, 9:16 vertical aspect ratio`);
+  return `https://image.pollinations.ai/prompt/${encoded}?width=768&height=1344&model=flux&seed=${seed}&nologo=true`;
+}
+
+async function generateSceneImage(sceneNum) {
+  const scene = state.project.scenes.find(s => s.number === sceneNum);
+  if (!scene) return;
+
+  const card = document.getElementById(`sceneCard-${sceneNum}`);
+  const canvasEl = card?.querySelector(`.scene-img-canvas`);
+  const btnGen = card?.querySelector(`.btn-gen-scene-img`);
+
+  if (btnGen) {
+    btnGen.disabled = true;
+    btnGen.innerHTML = `<span class="animate-spin inline-block mr-1">⏳</span> Generating...`;
+  }
+
+  if (canvasEl) {
+    canvasEl.innerHTML = `
+      <div class="w-full h-full min-h-[360px] rounded-xl animate-shimmer flex flex-col items-center justify-center p-6 text-center space-y-3 bg-[#06080d]">
+        <div class="w-10 h-10 rounded-full border-2 border-amber-400 border-t-transparent animate-spin"></div>
+        <div class="text-xs font-bold text-amber-300">Rendering Master Frame 0${sceneNum}...</div>
+        <div class="text-[10px] text-slate-400 font-mono">9:16 Vertical • Aspect Ratio Lock</div>
+      </div>
+    `;
+  }
+
+  try {
+    const imgUrl = await callImageGeneration(scene.masterFramePrompt, '9:16');
+    scene.imageUrl = imgUrl;
+    saveCurrentProject();
+    renderScenesUI();
+    showToast(`Master Frame Scene 0${sceneNum} selesai!`);
+  } catch (err) {
+    console.error(err);
+    showToast(`Gagal render Scene 0${sceneNum}: ${err.message}`);
+    renderScenesUI();
+  }
+}
+
+async function handleGenerateAllMasterFrames() {
+  const scenes = state.project.scenes || [];
+  if (scenes.length === 0) {
+    showToast('Selesaikan Fase 02 & 03 terlebih dahulu!');
+    return;
+  }
+
+  els.btnGenerateAllImages.disabled = true;
+  els.btnGenerateAllImages.innerHTML = `<span class="animate-spin inline-block mr-1.5">⏳</span> Rendering 6 Master Frames...`;
+
+  try {
+    for (const scene of scenes) {
+      showToast(`Merender Master Frame 0${scene.number}...`);
+      await generateSceneImage(scene.number);
+    }
+    showToast('Semua 6 Master Frame selesai di-render!');
+  } catch (err) {
+    console.error(err);
+    showToast(`Error: ${err.message}`);
+  } finally {
+    els.btnGenerateAllImages.disabled = false;
+    els.btnGenerateAllImages.innerHTML = `<i data-lucide="palette" class="w-4 h-4"></i><span>Generate Semua 6 Master Frame</span>`;
+    lucide.createIcons();
+  }
+}
+
+function openImageModal(url) {
+  if (!url) return;
+  els.modalPreviewImg.src = url;
+  els.btnDownloadModalImg.href = url;
+  els.modalImagePreview.classList.remove('hidden');
+}
+
 // ==========================================
 // 8. SMART DYNAMIC GENERATORS (OFFLINE / FALLBACK)
 // ==========================================
@@ -1325,14 +1644,45 @@ No camera warping. No morphing. No distorted hands (five fingers only). No sudde
   };
 }
 
+function generateSmartSoundtrack(masterPack, scenes) {
+  const genre = masterPack?.genre || 'Cinematic Ambient';
+  const tone = masterPack?.tone || 'Monumental, Atmospheric';
+  const title = `${masterPack?.title || 'Daily Short'} (Original AI Score)`;
+
+  return {
+    title: title,
+    genreTags: `${genre}, 35mm Analog Warmth, Sub-bass, Atmospheric Swells, 88 BPM, Masterpiece Cinema`,
+    bpm: '88 BPM',
+    mood: tone,
+    instruments: 'Sub-bass drone, warm modular synthesizer, crystalline granular bell, cinematic tom drums, orchestral brass swells',
+    fullPrompt: `[Genre: ${genre}, Cinematic Film Score, Deep Sub-bass, Organic Percussion, 88 BPM, 60s Vertical Short Film]
+[00:00 - 00:10 Intro / Hook] Low rumbling sub-bass chord, singular delicate crystalline chime, instant tension
+[00:10 - 00:20 Discovery] Subtle acoustic ticking pulse enters, warm analog synth arpeggio drifting upward
+[00:20 - 00:30 Escalation] Rhythmic cinematic floor toms build tempo, layered brass pad swell, rising urgency
+[00:30 - 00:40 Reveal] Sudden brief sub-drop silence (0.5s), soaring emotional lead synth melody, wide stereo field
+[00:40 - 00:50 Payoff Climax] Maximum dynamic energy, triumphant orchestral percussion hit, resonant brass chord crescendo
+[00:50 - 01:00 Outro / Loop] Sudden reverb decay, synth echoes soften into identical opening low sub-bass drone for seamless video loop`,
+    sceneTimeline: [
+      { scene: 1, time: "00:00 - 00:10", cue: "Low rumbling sub-bass & delicate crystalline chime to grab audience attention." },
+      { scene: 2, time: "00:10 - 00:20", cue: "Rhythmic ticking clock pulse with warm floating synth arpeggios." },
+      { scene: 3, time: "00:20 - 00:30", cue: "Deep cinematic floor toms build intensity; brass swells introduce tension." },
+      { scene: 4, time: "00:30 - 00:40", cue: "Micro-silence breath followed by soaring emotional lead synth reveal." },
+      { scene: 5, time: "00:40 - 00:50", cue: "Hero moment: full orchestral crescendo & triumphant sub-bass blast." },
+      { scene: 6, time: "00:50 - 01:00", cue: "Echoing reverb decay matching the opening drone for seamless 60s loop." }
+    ]
+  };
+}
+
 // ==========================================
 // 9. UI RENDERERS
 // ==========================================
 
 function renderAll() {
   updateContinuityLevelUI();
+  renderImageRefUI();
   renderSourcePackUI();
   renderMasterPackUI();
+  renderSoundtrackUI();
   renderScenesUI();
   renderQCMatrixUI();
   renderAssembleUI();
@@ -1354,6 +1704,21 @@ function updateContinuityLevelUI() {
 function updateSceneBadge() {
   const count = state.project.scenes?.length || 0;
   els.sceneCountBadge.textContent = `${count}/6`;
+}
+
+function renderImageRefUI() {
+  const imgRef = state.project.imageReference;
+  if (imgRef && imgRef.dataUrl) {
+    els.imageDropPrompt.classList.add('hidden');
+    els.imagePreviewContainer.classList.remove('hidden');
+    els.imagePreviewImg.src = imgRef.dataUrl;
+    els.imageInfoText.textContent = `${imgRef.name || 'reference_image.jpg'} (${Math.round((imgRef.size || 0) / 1024)} KB)`;
+  } else {
+    els.imageDropPrompt.classList.remove('hidden');
+    els.imagePreviewContainer.classList.add('hidden');
+    els.imagePreviewImg.src = '';
+    els.imageInfoText.textContent = '';
+  }
 }
 
 function renderSourcePackUI() {
@@ -1485,6 +1850,85 @@ function renderMasterPackUI() {
   `;
 }
 
+function renderSoundtrackUI() {
+  const mp = state.project.masterPack;
+  const st = state.project.soundtrack;
+
+  if (!mp) {
+    els.soundtrackContainer.classList.add('hidden');
+    return;
+  }
+
+  els.soundtrackContainer.classList.remove('hidden');
+
+  if (!st) {
+    els.soundtrackResultBox.innerHTML = `
+      <div class="p-4 rounded-xl bg-dark-card border border-dark-border text-center space-y-2">
+        <p class="text-xs text-slate-300 font-medium">Master Pack telah disetujui! Ingin membuat prompt soundtrack musik khusus untuk short video ini?</p>
+        <p class="text-[11px] text-slate-500">Klik tombol &ldquo;Generate Music Prompt&rdquo; di atas untuk menyusun prompt Suno / Udio AI berdurasi 60 detik yang selaras dengan 6 scene.</p>
+      </div>
+    `;
+    return;
+  }
+
+  els.soundtrackResultBox.innerHTML = `
+    <!-- Top Metadata Badges -->
+    <div class="flex flex-wrap items-center justify-between gap-2 p-3.5 rounded-xl bg-dark-card border border-dark-border">
+      <div>
+        <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-400 block">SOUNDTRACK TITLE</span>
+        <h4 class="text-sm font-bold text-white">${st.title}</h4>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold">${st.bpm || '88 BPM'}</span>
+        <span class="text-[11px] px-2.5 py-1 rounded-lg bg-dark-panel border border-dark-border text-slate-300 font-medium">${st.mood || 'Cinematic'}</span>
+      </div>
+    </div>
+
+    <!-- Full Prompt for Suno / Udio with Copy Button -->
+    <div class="p-4 rounded-xl bg-[#090b14] border border-dark-border space-y-2">
+      <div class="flex items-center justify-between">
+        <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+          <i data-lucide="music" class="w-3.5 h-3.5"></i>
+          <span>Prompt Siap Pakai (Suno AI / Udio AI)</span>
+        </span>
+        <button id="btnCopySoundtrack" class="text-xs font-bold px-3 py-1 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 flex items-center gap-1.5 transition">
+          <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+          <span>Copy Music Prompt</span>
+        </button>
+      </div>
+      <p class="font-mono text-xs text-slate-200 bg-[#05070c] p-3 rounded-lg border border-dark-border select-all max-h-44 overflow-y-auto whitespace-pre-line leading-relaxed">
+        ${st.fullPrompt}
+      </p>
+      <div class="text-[11px] text-slate-400 pt-1">
+        <strong class="text-slate-300">Style Tags:</strong> ${st.genreTags}
+      </div>
+    </div>
+
+    <!-- 60-Second Timeline Sync with 6 Scenes -->
+    <div class="p-3.5 rounded-xl bg-dark-card border border-dark-border space-y-2.5">
+      <div class="text-[10px] font-bold uppercase tracking-wider text-blue-400">PROGRESI MUSIK 60 DETIK (SELARAS DENGAN 6 SCENE)</div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+        ${(st.sceneTimeline || []).map(t => `
+          <div class="p-2.5 rounded-lg bg-dark-panel border border-dark-border space-y-1">
+            <div class="flex items-center justify-between text-[10px]">
+              <span class="font-bold text-orange-400">Scene 0${t.scene}</span>
+              <span class="font-mono text-slate-500">${t.time}</span>
+            </div>
+            <p class="text-[11px] text-slate-300 leading-snug">${t.cue}</p>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+
+  document.getElementById('btnCopySoundtrack')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(st.fullPrompt);
+    showToast('Prompt Soundtrack AI disalin ke clipboard!');
+  });
+
+  lucide.createIcons();
+}
+
 function renderScenesUI() {
   const scenes = state.project.scenes || [];
   if (scenes.length === 0) {
@@ -1550,51 +1994,100 @@ function renderScenesUI() {
           </div>
         </div>
 
-        <!-- Prompts Section (Master Frame & Omni Video) -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          
-          <!-- Master Frame Prompt Card -->
-          <div class="p-4 rounded-xl bg-[#0b0d16] border border-dark-border space-y-2 flex flex-col justify-between">
-            <div>
-              <div class="flex items-center justify-between mb-1.5">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
-                  <i data-lucide="image" class="w-3.5 h-3.5"></i>
-                  <span>Master Frame Prompt (Image Gen)</span>
-                </span>
-                <span class="text-[10px] text-slate-500 font-mono">Midjourney / Flux / Imagen</span>
+        <!-- Main Studio Workspace: 9:16 Visual Canvas (Left) + Prompts (Right) -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+          <!-- Left: 9:16 Master Frame Visual Canvas -->
+          <div class="lg:col-span-5 p-4 rounded-xl bg-[#090b14] border border-dark-border flex flex-col justify-between space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                <i data-lucide="image" class="w-3.5 h-3.5"></i>
+                <span>Visual Master Frame (9:16)</span>
+              </span>
+              <div class="flex items-center gap-1.5">
+                ${scene.imageUrl ? `
+                  <button class="btn-fullscreen-scene-img p-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 transition" data-url="${scene.imageUrl}" title="Lihat Penuh">
+                    <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <a href="${scene.imageUrl}" download="Scene_0${scene.number}_MasterFrame.png" target="_blank" class="p-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 transition" title="Download">
+                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                  </a>
+                ` : ''}
               </div>
-              <p class="text-xs text-slate-300 font-mono leading-relaxed bg-[#06080d] p-3 rounded-lg border border-dark-border select-all max-h-36 overflow-y-auto">
-                ${scene.masterFramePrompt}
-              </p>
             </div>
-            <div class="pt-2 flex justify-end">
-              <button class="btn-copy-prompt text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 flex items-center gap-1.5 transition" data-text="${encodeURIComponent(scene.masterFramePrompt)}">
-                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-                <span>Copy Master Frame</span>
-              </button>
+
+            <!-- Canvas Area -->
+            <div class="scene-img-canvas w-full max-w-[260px] mx-auto rounded-xl overflow-hidden border border-dark-border bg-[#05070c] aspect-short flex items-center justify-center relative shadow-inner">
+              ${scene.imageUrl ? `
+                <img src="${scene.imageUrl}" alt="Scene 0${scene.number} Master Frame" class="w-full h-full object-cover transition duration-300 hover:scale-105 cursor-pointer btn-open-modal-trigger" data-url="${scene.imageUrl}">
+                <div class="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/80 backdrop-blur-sm text-[9px] font-mono text-amber-300 border border-white/10">
+                  9:16 Frame
+                </div>
+              ` : `
+                <div class="p-6 text-center space-y-2 text-slate-500">
+                  <div class="w-12 h-12 mx-auto rounded-xl bg-dark-card border border-dark-border flex items-center justify-center text-slate-600">
+                    <i data-lucide="image" class="w-6 h-6 stroke-1"></i>
+                  </div>
+                  <p class="text-xs text-slate-300 font-semibold">Master Frame Belum Ada</p>
+                  <p class="text-[10px] text-slate-500">Klik tombol di bawah untuk render AI gambar vertikal 9:16</p>
+                </div>
+              `}
             </div>
+
+            <!-- Action Button -->
+            <button class="btn-gen-scene-img w-full py-2.5 rounded-xl ${scene.imageUrl ? 'bg-dark-card hover:bg-dark-hover text-slate-300 border border-dark-border' : 'bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-black font-extrabold shadow-lg shadow-amber-600/20'} text-xs font-bold transition flex items-center justify-center gap-1.5" data-scene="${scene.number}">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+              <span>${scene.imageUrl ? 'Regenerate Frame (9:16)' : 'Generate Master Frame (9:16)'}</span>
+            </button>
           </div>
 
-          <!-- Omni 1.1 Video Prompt Card -->
-          <div class="p-4 rounded-xl bg-[#0b0d16] border border-dark-border space-y-2 flex flex-col justify-between">
-            <div>
-              <div class="flex items-center justify-between mb-1.5">
-                <span class="text-[10px] font-bold uppercase tracking-wider text-orange-400 flex items-center gap-1">
-                  <i data-lucide="video" class="w-3.5 h-3.5"></i>
-                  <span>Omni 1.1 Video Prompt (~10s)</span>
-                </span>
-                <span class="text-[10px] text-slate-500 font-mono">Google Flow / Omni 1.1</span>
+          <!-- Right: Prompts Section (Master Frame & Omni Video) -->
+          <div class="lg:col-span-7 flex flex-col justify-between space-y-4">
+            
+            <!-- Master Frame Prompt Card -->
+            <div class="p-4 rounded-xl bg-[#0b0d16] border border-dark-border space-y-2 flex flex-col justify-between flex-1">
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
+                    <i data-lucide="image" class="w-3.5 h-3.5"></i>
+                    <span>Master Frame Prompt (Image Gen)</span>
+                  </span>
+                  <span class="text-[10px] text-slate-500 font-mono">Midjourney / Flux / Imagen</span>
+                </div>
+                <p class="text-xs text-slate-300 font-mono leading-relaxed bg-[#06080d] p-3 rounded-lg border border-dark-border select-all max-h-32 overflow-y-auto">
+                  ${scene.masterFramePrompt}
+                </p>
               </div>
-              <p class="text-xs text-slate-300 font-mono leading-relaxed bg-[#06080d] p-3 rounded-lg border border-dark-border select-all max-h-36 overflow-y-auto">
-                ${currentOmni}
-              </p>
+              <div class="pt-2 flex justify-end">
+                <button class="btn-copy-prompt text-xs font-bold px-3 py-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 flex items-center gap-1.5 transition" data-text="${encodeURIComponent(scene.masterFramePrompt)}">
+                  <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  <span>Copy Master Frame Prompt</span>
+                </button>
+              </div>
             </div>
-            <div class="pt-2 flex justify-end">
-              <button class="btn-copy-prompt text-xs font-bold px-3 py-1.5 rounded-lg bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 flex items-center gap-1.5 transition" data-text="${encodeURIComponent(currentOmni)}">
-                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
-                <span>Copy Omni Prompt</span>
-              </button>
+
+            <!-- Omni 1.1 Video Prompt Card -->
+            <div class="p-4 rounded-xl bg-[#0b0d16] border border-dark-border space-y-2 flex flex-col justify-between flex-1">
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-orange-400 flex items-center gap-1">
+                    <i data-lucide="video" class="w-3.5 h-3.5"></i>
+                    <span>Omni 1.1 Video Prompt (~10s)</span>
+                  </span>
+                  <span class="text-[10px] text-slate-500 font-mono">Google Flow / Omni 1.1</span>
+                </div>
+                <p class="text-xs text-slate-300 font-mono leading-relaxed bg-[#06080d] p-3 rounded-lg border border-dark-border select-all max-h-32 overflow-y-auto">
+                  ${currentOmni}
+                </p>
+              </div>
+              <div class="pt-2 flex justify-end">
+                <button class="btn-copy-prompt text-xs font-bold px-3 py-1.5 rounded-lg bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/30 text-orange-300 flex items-center gap-1.5 transition" data-text="${encodeURIComponent(currentOmni)}">
+                  <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                  <span>Copy Omni Prompt</span>
+                </button>
+              </div>
             </div>
+
           </div>
 
         </div>
@@ -1638,6 +2131,25 @@ function renderScenesUI() {
       els.selectFixScene.value = sceneNum;
       switchTab('tab-qc');
       window.scrollTo({ top: 300, behavior: 'smooth' });
+    });
+  });
+
+  document.querySelectorAll('.btn-gen-scene-img').forEach(b => {
+    b.addEventListener('click', () => {
+      const sceneNum = parseInt(b.dataset.scene, 10);
+      generateSceneImage(sceneNum);
+    });
+  });
+
+  document.querySelectorAll('.btn-fullscreen-scene-img').forEach(b => {
+    b.addEventListener('click', () => {
+      openImageModal(b.dataset.url);
+    });
+  });
+
+  document.querySelectorAll('.btn-open-modal-trigger').forEach(b => {
+    b.addEventListener('click', () => {
+      openImageModal(b.dataset.url);
     });
   });
 
@@ -1751,7 +2263,7 @@ function renderAssembleUI() {
     return;
   }
 
-  els.voiceoverScriptContent.innerHTML = scenes.map(s => `
+  let html = scenes.map(s => `
     <div class="p-3 rounded-xl bg-dark-card border border-dark-border space-y-1">
       <div class="flex items-center justify-between text-[11px]">
         <span class="font-bold text-orange-400">SCENE 0${s.number} (~10s)</span>
@@ -1762,6 +2274,27 @@ function renderAssembleUI() {
       </p>
     </div>
   `).join('');
+
+  if (state.project.soundtrack) {
+    const st = state.project.soundtrack;
+    html += `
+      <div class="mt-4 p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-2 text-xs">
+        <div class="flex items-center justify-between">
+          <strong class="text-emerald-400 uppercase text-[10px] tracking-wider flex items-center gap-1.5">
+            <i data-lucide="music" class="w-3.5 h-3.5"></i>
+            <span>Soundtrack Cue (Suno / Udio AI): ${st.title}</span>
+          </strong>
+          <span class="text-[10px] text-slate-400 font-mono">${st.bpm} • ${st.mood}</span>
+        </div>
+        <p class="text-slate-300 font-mono text-[11px] bg-[#05070c] p-2.5 rounded-lg border border-dark-border select-all max-h-24 overflow-y-auto">
+          ${st.fullPrompt}
+        </p>
+      </div>
+    `;
+  }
+
+  els.voiceoverScriptContent.innerHTML = html;
+  lucide.createIcons();
 }
 
 function copyVoiceoverScript() {
@@ -1788,7 +2321,17 @@ Tema: ${p.theme} | Continuity: Level ${p.continuityLevel}
 - **Camera**: ${p.masterPack?.globalVisualLock?.cameraLanguage || '-'}
 - **World Rules**: ${p.masterPack?.globalVisualLock?.worldRules || '-'}
 
-## 3. SCENE BREAKDOWN (6 SCENES)
+${p.soundtrack ? `## 3. SOUNDTRACK & MUSIC SPEC (SUNO / UDIO)
+- **Title**: ${p.soundtrack.title}
+- **Genre & Tags**: ${p.soundtrack.genreTags}
+- **BPM & Mood**: ${p.soundtrack.bpm} • ${p.soundtrack.mood}
+- **Full Music Prompt**:
+\`\`\`
+${p.soundtrack.fullPrompt}
+\`\`\`
+` : ''}
+
+## 4. SCENE BREAKDOWN (6 SCENES)
 ${(p.scenes || []).map(s => `
 ### Scene 0${s.number}: ${s.title}
 - **Fungsi**: ${s.storyFunction}
@@ -1796,12 +2339,12 @@ ${(p.scenes || []).map(s => `
 - **Voiceover**: "${s.voLine}"
 - **SFX**: ${s.sfx}
 
-**Master Frame Prompt:**
+**Master Frame Prompt (Image Gen 9:16):**
 \`\`\`
 ${s.masterFramePrompt}
 \`\`\`
 
-**Omni 1.1 Video Prompt:**
+**Omni 1.1 Video Prompt (~10s):**
 \`\`\`
 ${s.omniPromptV2 || s.omniPrompt}
 \`\`\`

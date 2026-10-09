@@ -179,10 +179,39 @@
                 <span>Reference Input (Teks / Link / Transkrip / Ide)</span>
                 <span class="text-[10px] text-slate-400 normal-case font-normal">Bisa acak apa saja</span>
               </label>
-              <textarea id="inputReference" rows="7" class="w-full bg-[#0a0c14] border border-dark-border focus:border-orange-500 rounded-xl p-3.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition resize-none font-sans" placeholder="Contoh:
+              <textarea id="inputReference" rows="5" class="w-full bg-[#0a0c14] border border-dark-border focus:border-orange-500 rounded-xl p-3.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition resize-none font-sans" placeholder="Contoh:
 - Video dokumenter tentang bagaimana koloni semut membangun sarang bawah tanah raksasa yang rumit seperti kota manusia.
 - Atau link YouTube / TikTok / transkrip video.
 - Atau ide 1 kalimat: 'Astronaut menemukan struktur kubus raksasa menyala di planet merah.'"></textarea>
+            </div>
+
+            <!-- Image Reference Upload Box (Multimodal) -->
+            <div>
+              <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between">
+                <span>Foto / Gambar Referensi (Opsional)</span>
+                <span class="text-[10px] text-orange-400 font-semibold px-2 py-0.5 rounded bg-orange-500/10 border border-orange-500/20">Gemini Vision AI</span>
+              </label>
+              
+              <div id="imageDropzone" class="border-2 border-dashed border-dark-border hover:border-orange-500/60 rounded-xl p-3.5 text-center cursor-pointer transition bg-[#0a0c14]/60 group">
+                <input id="inputImageRef" type="file" accept="image/png,image/jpeg,image/webp" class="hidden">
+                
+                <div id="imageDropPrompt" class="space-y-1.5 py-1">
+                  <div class="w-9 h-9 mx-auto rounded-lg bg-dark-card border border-dark-border flex items-center justify-center text-slate-400 group-hover:text-orange-400 transition">
+                    <i data-lucide="image-plus" class="w-5 h-5"></i>
+                  </div>
+                  <p class="text-xs text-slate-300 font-semibold">Tarik foto referensi ke sini atau <span class="text-orange-400 underline decoration-orange-400/50">klik untuk memilih</span></p>
+                  <p class="text-[10px] text-slate-500">Membantu AI mengenali produk, model/karakter, atau setting visual Anda (.jpg, .png)</p>
+                </div>
+
+                <!-- Preview Thumbnail (Hidden initially) -->
+                <div id="imagePreviewContainer" class="hidden relative inline-block max-w-full">
+                  <img id="imagePreviewImg" src="" alt="Reference Preview" class="max-h-36 rounded-lg object-contain border border-dark-border mx-auto shadow-md">
+                  <button id="btnRemoveImage" type="button" class="absolute -top-2 -right-2 p-1 rounded-full bg-red-600 text-white hover:bg-red-500 shadow-lg transition" title="Hapus Gambar">
+                    <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <div id="imageInfoText" class="text-[10px] text-slate-400 mt-1 truncate max-w-xs mx-auto"></div>
+                </div>
+              </div>
             </div>
 
             <!-- Quick Template Presets -->
@@ -338,10 +367,37 @@
           </div>
         </div>
 
+        <!-- Dedicated AI Soundtrack & Music Section -->
+        <div id="soundtrackContainer" class="hidden p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-4 shadow-xl">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-dark-border pb-3">
+            <div class="flex items-center gap-2.5">
+              <div class="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                <i data-lucide="music-4" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-white text-base">Soundtrack &amp; Music Prompt (Suno / Udio AI)</h3>
+                <p class="text-xs text-slate-400">AI menyusun prompt musik tersendiri yang selaras dengan alur 60 detik video</p>
+              </div>
+            </div>
+            <button id="btnGenerateSoundtrack" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 transition shadow-md shadow-emerald-600/25">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+              <span>Generate Music Prompt</span>
+            </button>
+          </div>
+
+          <div id="soundtrackResultBox" class="space-y-4 text-xs">
+            <!-- Rendered dynamically -->
+          </div>
+        </div>
+
         <!-- Next Step Button -->
-        <div id="masterPackFooter" class="hidden flex justify-end">
+        <div id="masterPackFooter" class="hidden flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+          <div class="flex items-center gap-2 text-xs text-slate-400">
+            <i data-lucide="check-check" class="w-4 h-4 text-emerald-400"></i>
+            <span>Konsep &amp; Global Visual Lock Siap!</span>
+          </div>
           <button id="btnProceedToScenes" class="px-6 py-3 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs flex items-center gap-2 transition shadow-lg shadow-orange-600/25">
-            <span>Buka 6-Scene Studio &amp; Prompts</span>
+            <span>Buka 6-Scene Studio &amp; AI Image</span>
             <i data-lucide="arrow-right" class="w-4 h-4"></i>
           </button>
         </div>
@@ -391,6 +447,28 @@
         <button class="scene-filter-pill px-3.5 py-1.5 rounded-xl text-xs font-bold bg-dark-panel border border-dark-border text-slate-400 hover:text-slate-200 transition whitespace-nowrap" data-scene="6">
           Scene 06 • Loop
         </button>
+      </div>
+
+      <!-- AI Image Engine Bar (Banana Pro / Gemini AI / Flux) -->
+      <div class="p-4 rounded-2xl bg-dark-panel border border-dark-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+        <div class="flex items-center gap-3 flex-wrap">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+            <span class="text-xs font-bold text-white uppercase tracking-wider">AI Image Generator Engine:</span>
+          </div>
+          <select id="selectImageEngine" class="bg-[#0a0c14] border border-dark-border text-xs rounded-xl px-3 py-1.5 text-slate-200 focus:outline-none focus:border-amber-500 transition">
+            <option value="banana-pro">Banana Pro / Gemini Flash Image</option>
+            <option value="flux-pro">Flux Pro 9:16 (Instant Ultra-HD)</option>
+          </select>
+          <span class="text-[10px] text-slate-400 font-mono hidden md:inline">Format: 9:16 Vertical Master Frames</span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button id="btnGenerateAllImages" class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition">
+            <i data-lucide="palette" class="w-4 h-4"></i>
+            <span>Generate Semua 6 Master Frame</span>
+          </button>
+        </div>
       </div>
 
       <!-- Scene Cards Container -->
@@ -722,6 +800,22 @@
           <span>Import File JSON</span>
         </button>
         <input id="inputImportFile" type="file" accept=".json" class="hidden">
+      </div>
+    </div>
+  </div>
+
+  <!-- Image Preview Fullscreen Modal -->
+  <div id="modalImagePreview" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden flex items-center justify-center p-4">
+    <div class="relative max-w-md w-full max-h-[92vh] flex flex-col items-center">
+      <button id="btnCloseImageModal" class="absolute -top-10 right-0 text-slate-300 hover:text-white p-1.5 transition">
+        <i data-lucide="x" class="w-6 h-6"></i>
+      </button>
+      <img id="modalPreviewImg" src="" alt="Master Frame" class="max-h-[78vh] w-auto rounded-2xl shadow-2xl border border-dark-border object-contain">
+      <div class="mt-3 flex items-center gap-3">
+        <a id="btnDownloadModalImg" href="#" download="master_frame.png" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-black font-extrabold text-xs flex items-center gap-2 transition shadow-lg">
+          <i data-lucide="download" class="w-4 h-4"></i>
+          <span>Download Master Frame 9:16</span>
+        </a>
       </div>
     </div>
   </div>
