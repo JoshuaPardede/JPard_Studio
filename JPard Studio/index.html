@@ -367,29 +367,6 @@
           </div>
         </div>
 
-        <!-- Dedicated AI Soundtrack & Music Section -->
-        <div id="soundtrackContainer" class="hidden p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-4 shadow-xl">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-dark-border pb-3">
-            <div class="flex items-center gap-2.5">
-              <div class="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-                <i data-lucide="music-4" class="w-4 h-4"></i>
-              </div>
-              <div>
-                <h3 class="font-bold text-white text-base">Soundtrack &amp; Music Prompt (Suno / Udio AI)</h3>
-                <p class="text-xs text-slate-400">AI menyusun prompt musik tersendiri yang selaras dengan alur 60 detik video</p>
-              </div>
-            </div>
-            <button id="btnGenerateSoundtrack" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 transition shadow-md shadow-emerald-600/25">
-              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-              <span>Generate Music Prompt</span>
-            </button>
-          </div>
-
-          <div id="soundtrackResultBox" class="space-y-4 text-xs">
-            <!-- Rendered dynamically -->
-          </div>
-        </div>
-
         <!-- Next Step Button -->
         <div id="masterPackFooter" class="hidden flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
           <div class="flex items-center gap-2 text-xs text-slate-400">
@@ -449,24 +426,23 @@
         </button>
       </div>
 
-      <!-- AI Image Engine Bar (Banana Pro / Gemini AI / Flux) -->
+      <!-- AI Image Engine Bar (Google Gemini Banana Pro) -->
       <div class="p-4 rounded-2xl bg-dark-panel border border-dark-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
         <div class="flex items-center gap-3 flex-wrap">
           <div class="flex items-center gap-2">
-            <span class="w-2.5 h-2.5 rounded-full bg-amber-400"></span>
-            <span class="text-xs font-bold text-white uppercase tracking-wider">AI Image Generator Engine:</span>
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+            <span class="text-xs font-extrabold text-white tracking-wide flex items-center gap-2">
+              <span>GOOGLE GEMINI BANANA PRO</span>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30">gemini-3.1-flash-image</span>
+            </span>
           </div>
-          <select id="selectImageEngine" class="bg-[#0a0c14] border border-dark-border text-xs rounded-xl px-3 py-1.5 text-slate-200 focus:outline-none focus:border-amber-500 transition">
-            <option value="banana-pro">Banana Pro / Gemini Flash Image</option>
-            <option value="flux-pro">Flux Pro 9:16 (Instant Ultra-HD)</option>
-          </select>
-          <span class="text-[10px] text-slate-400 font-mono hidden md:inline">Format: 9:16 Vertical Master Frames</span>
+          <span class="text-[11px] text-slate-400 hidden sm:inline">• Native 9:16 Vertical Master Frame</span>
         </div>
 
         <div class="flex items-center gap-2">
-          <button id="btnGenerateAllImages" class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition">
-            <i data-lucide="palette" class="w-4 h-4"></i>
-            <span>Generate Semua 6 Master Frame</span>
+          <button id="btnGenerateAllImages" class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition">
+            <i data-lucide="sparkles" class="w-4 h-4"></i>
+            <span>Generate Semua 6 Master Frame (Banana Pro)</span>
           </button>
         </div>
       </div>
@@ -646,6 +622,29 @@
             </div>
 
             <div id="voiceoverScriptContent" class="space-y-4 text-xs">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <!-- Dedicated AI Soundtrack & Music Section (Auto-Generated with VO) -->
+          <div id="soundtrackContainer" class="p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-4 shadow-xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-dark-border pb-3">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <i data-lucide="music-4" class="w-4 h-4"></i>
+                </div>
+                <div>
+                  <h3 class="font-bold text-white text-base">Soundtrack &amp; Music Prompt (Suno / Udio AI)</h3>
+                  <p class="text-xs text-slate-400">Otomatis sinkron dengan alur 60 detik video (Scene 01 s.d 06)</p>
+                </div>
+              </div>
+              <button id="btnGenerateSoundtrack" class="px-3.5 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 font-bold text-xs flex items-center gap-1.5 transition">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                <span>Regenerate Musik</span>
+              </button>
+            </div>
+
+            <div id="soundtrackResultBox" class="space-y-4 text-xs">
               <!-- Dynamically populated -->
             </div>
           </div>

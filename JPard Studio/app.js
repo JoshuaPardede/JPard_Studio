@@ -121,7 +121,6 @@ const els = {
   btnProceedToScenes: document.getElementById('btnProceedToScenes'),
 
   // Tab 3: Scenes
-  selectImageEngine: document.getElementById('selectImageEngine'),
   btnGenerateAllImages: document.getElementById('btnGenerateAllImages'),
   scenesEmpty: document.getElementById('scenesEmpty'),
   scenesList: document.getElementById('scenesList'),
@@ -1163,19 +1162,27 @@ Output ONLY valid JSON matching this schema:
     state.project.scenes = scenesData;
     state.project.title = masterData.title;
 
+    // Auto-generate Soundtrack & Music Prompt (Suno / Udio) alongside 6 scenes
+    try {
+      state.project.soundtrack = await generateSoundtrackSpec(masterData, scenesData);
+    } catch (e) {
+      state.project.soundtrack = generateSmartSoundtrack(masterData, scenesData);
+    }
+
     saveCurrentProject();
     renderMasterPackUI();
     renderScenesUI();
     renderQCMatrixUI();
     renderAssembleUI();
 
-    showToast('Master Production Pack & 6 Scene berhasil dibuat!');
+    showToast('Master Production Pack & 6 Scene (+ Soundtrack) berhasil dibuat!');
   } catch (err) {
     console.error(err);
     showToast(`Error: ${err.message}. Menggunakan generator pintar.`);
     const fallback = generateSmartMasterAndScenes(state.project.sourcePack, state.project.theme, state.project.continuityLevel);
     state.project.masterPack = fallback.masterPack;
     state.project.scenes = fallback.scenes;
+    state.project.soundtrack = generateSmartSoundtrack(fallback.masterPack, fallback.scenes);
     saveCurrentProject();
     renderMasterPackUI();
     renderScenesUI();
@@ -1334,30 +1341,22 @@ function removeImageRef() {
 // AI SOUNDTRACK & MUSIC GENERATOR (SUNO / UDIO)
 // ------------------------------------------
 
-async function handleGenerateSoundtrack() {
-  if (!state.project.masterPack) {
-    showToast('Selesaikan Fase 02 (Master Production Pack) terlebih dahulu!');
-    return;
-  }
+async function generateSoundtrackSpec(masterPack, scenes) {
+  if (!masterPack) return null;
 
-  els.btnGenerateSoundtrack.disabled = true;
-  els.btnGenerateSoundtrack.innerHTML = `<span class="animate-spin inline-block mr-1.5">⏳</span> Merancang Soundtrack AI...`;
-
-  try {
-    let soundtrackData = null;
-
-    if (state.apiKey && state.apiKey.trim().length > 10) {
+  if (state.apiKey && state.apiKey.trim().length > 10) {
+    try {
       const sysPrompt = `You are an elite film composer and AI music director specialized in 60-second cinematic short video scoring (Suno AI & Udio). You create tightly synchronized music prompts matching a 6-scene story progression. Output strictly valid JSON.`;
 
       const userPrompt = `Create a 60-second soundtrack prompt for Suno AI and Udio based on this video:
-Title: "${state.project.masterPack.title}"
-Concept: "${state.project.masterPack.concept}"
-Genre: "${state.project.masterPack.genre}"
-Visual Style: "${state.project.masterPack.visualStyle}"
-Tone: "${state.project.masterPack.tone}"
+Title: "${masterPack.title}"
+Concept: "${masterPack.concept}"
+Genre: "${masterPack.genre}"
+Visual Style: "${masterPack.visualStyle}"
+Tone: "${masterPack.tone}"
 
 6 Scenes Arc:
-${(state.project.scenes || []).map(s => `Scene ${s.number} (${s.title}): ${s.storyFunction} | SFX: ${s.sfx}`).join('\n')}
+${(scenes || []).map(s => `Scene ${s.number} (${s.title}): ${s.storyFunction} | SFX: ${s.sfx}`).join('\n')}
 
 Output ONLY valid JSON matching this exact structure:
 {
@@ -1380,38 +1379,55 @@ Output ONLY valid JSON matching this exact structure:
       const rawJson = await callGemini(userPrompt, sysPrompt);
       if (rawJson) {
         const cleaned = rawJson.replace(/```json/g, '').replace(/```/g, '').trim();
-        soundtrackData = JSON.parse(cleaned);
+        return JSON.parse(cleaned);
       }
+    } catch (e) {
+      console.warn('Gemini Soundtrack generation error, using smart arrangement:', e);
     }
+  }
 
-    if (!soundtrackData) {
-      soundtrackData = generateSmartSoundtrack(state.project.masterPack, state.project.scenes);
-    }
+  return generateSmartSoundtrack(masterPack, scenes);
+}
 
-    state.project.soundtrack = soundtrackData;
+// Handler: Regenerate Soundtrack from Tab 5
+async function handleGenerateSoundtrack() {
+  if (!state.project.masterPack) {
+    showToast('Selesaikan Fase 02 (Master Production Pack) terlebih dahulu!');
+    return;
+  }
+
+  els.btnGenerateSoundtrack.disabled = true;
+  els.btnGenerateSoundtrack.innerHTML = `<span class="animate-spin inline-block mr-1">⏳</span> Menyusun Musik...`;
+
+  try {
+    const data = await generateSoundtrackSpec(state.project.masterPack, state.project.scenes);
+    state.project.soundtrack = data;
     saveCurrentProject();
     renderSoundtrackUI();
-    showToast('Soundtrack & Music Prompt berhasil dibuat!');
+    showToast('Soundtrack & Music Prompt berhasil diperbarui!');
   } catch (err) {
     console.error(err);
-    showToast(`Error: ${err.message}. Menggunakan aransemen pintar.`);
-    const fallback = generateSmartSoundtrack(state.project.masterPack, state.project.scenes);
-    state.project.soundtrack = fallback;
+    state.project.soundtrack = generateSmartSoundtrack(state.project.masterPack, state.project.scenes);
     saveCurrentProject();
     renderSoundtrackUI();
   } finally {
     els.btnGenerateSoundtrack.disabled = false;
-    els.btnGenerateSoundtrack.innerHTML = `<i data-lucide="sparkles" class="w-3.5 h-3.5"></i><span>Generate Music Prompt</span>`;
+    els.btnGenerateSoundtrack.innerHTML = `<i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i><span>Regenerate Musik</span>`;
     lucide.createIcons();
   }
 }
 
 // ------------------------------------------
-// AI IMAGE GENERATOR ENGINE (BANANA PRO & FLUX)
+// GOOGLE GEMINI BANANA PRO (IMAGE GENERATION)
+// Model: gemini-3.1-flash-image
 // ------------------------------------------
 
 async function callImageGeneration(promptText, aspectRatio = '9:16') {
-  const engine = els.selectImageEngine?.value || 'banana-pro';
+  if (!state.apiKey || state.apiKey.trim().length < 10) {
+    showToast('⚠️ Masukkan Google Gemini API Key di menu Pengaturan (ikon Gear)!');
+    openSettings();
+    throw new Error('API Key Google Gemini belum diatur. Masukkan API Key Anda di Pengaturan.');
+  }
 
   // Sanitize prompt text for text-to-image
   const cleanPrompt = promptText
@@ -1419,40 +1435,102 @@ async function callImageGeneration(promptText, aspectRatio = '9:16') {
     .replace(/--no\s+[^,]+/gi, '')
     .trim();
 
-  // Tier 1: Gemini Interactions API / Banana Pro if API key provided
-  if (engine === 'banana-pro' && state.apiKey && state.apiKey.trim().length > 10) {
-    try {
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/interactions`;
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'x-goog-api-key': state.apiKey.trim(),
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gemini-3.1-flash-image',
-          input: [
-            { type: 'text', text: `${cleanPrompt}, 9:16 vertical aspect ratio, 8k resolution, cinematic masterpiece` }
-          ]
-        })
-      });
+  const apiKey = state.apiKey.trim();
 
-      if (res.ok) {
-        const data = await res.json();
-        const base64Data = data?.output_image?.data || data?.interaction?.output_image?.data;
-        if (base64Data) {
-          return `data:image/png;base64,${base64Data}`;
+  // Primary Call: Google Gemini Banana Pro via official Interactions API
+  const interactionsEndpoint = `https://generativelanguage.googleapis.com/v1beta/interactions`;
+  
+  const interactionPayload = {
+    model: 'gemini-3.1-flash-image',
+    input: cleanPrompt,
+    response_format: {
+      type: 'image',
+      aspect_ratio: aspectRatio,
+      image_size: '1K'
+    }
+  };
+
+  const res = await fetch(interactionsEndpoint, {
+    method: 'POST',
+    headers: {
+      'x-goog-api-key': apiKey,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(interactionPayload)
+  });
+
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    const errMsg = errData?.error?.message || `HTTP error ${res.status}`;
+    
+    // Fallback: If interactions API not enabled for this key, try Google Imagen 3 on Gemini API
+    console.warn(`Gemini Banana Pro interactions notice: ${errMsg}. Mencoba endpoint Gemini Imagen...`);
+    const imagenEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${encodeURIComponent(apiKey)}`;
+    const imagenRes = await fetch(imagenEndpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        instances: [{ prompt: `${cleanPrompt}, 9:16 vertical ratio, 8k resolution, cinematic masterpiece` }],
+        parameters: { sampleCount: 1, aspectRatio: '9:16' }
+      })
+    });
+
+    if (imagenRes.ok) {
+      const imgData = await imagenRes.json();
+      const b64 = imgData?.predictions?.[0]?.bytesBase64Encoded;
+      if (b64) return `data:image/png;base64,${b64}`;
+    }
+
+    throw new Error(`Google Gemini Banana Pro: ${errMsg}`);
+  }
+
+  const data = await res.json();
+  
+  // Parse response from Google Gemini Banana Pro
+  let base64Data = null;
+  let mimeType = 'image/jpeg';
+
+  // Format 1: Output image convenience property
+  if (data?.output_image?.data) {
+    base64Data = data.output_image.data;
+    mimeType = data.output_image.mime_type || 'image/jpeg';
+  } else if (data?.interaction?.output_image?.data) {
+    base64Data = data.interaction.output_image.data;
+    mimeType = data.interaction.output_image.mime_type || 'image/jpeg';
+  }
+
+  // Format 2: Steps timeline
+  if (!base64Data && data?.steps) {
+    for (const step of data.steps) {
+      if (step.content) {
+        for (const item of step.content) {
+          if (item.type === 'image' && item.data) {
+            base64Data = item.data;
+            mimeType = item.mime_type || item.mimeType || 'image/jpeg';
+            break;
+          }
         }
       }
-    } catch (e) {
-      console.warn('Banana Pro API attempt failed, falling back to Flux Pro:', e);
+      if (base64Data) break;
     }
   }
 
-  // Tier 2: Pollinations Flux Engine (High-Resolution 9:16 Vertical Instant Free Engine)
-  const seed = Math.floor(Math.random() * 900000) + 100000;
-  const encoded = encodeURIComponent(`${cleanPrompt}, 8k resolution, cinematic lighting, 35mm film photography, 9:16 vertical aspect ratio`);
-  return `https://image.pollinations.ai/prompt/${encoded}?width=768&height=1344&model=flux&seed=${seed}&nologo=true`;
+  // Format 3: Candidates inlineData (generateContent style)
+  if (!base64Data && data?.candidates?.[0]?.content?.parts) {
+    for (const part of data.candidates[0].content.parts) {
+      if (part.inlineData?.data) {
+        base64Data = part.inlineData.data;
+        mimeType = part.inlineData.mimeType || 'image/jpeg';
+        break;
+      }
+    }
+  }
+
+  if (base64Data) {
+    return `data:${mimeType};base64,${base64Data}`;
+  }
+
+  throw new Error('Google Gemini Banana Pro tidak mengembalikan data gambar yang valid.');
 }
 
 async function generateSceneImage(sceneNum) {
@@ -1472,8 +1550,8 @@ async function generateSceneImage(sceneNum) {
     canvasEl.innerHTML = `
       <div class="w-full h-full min-h-[360px] rounded-xl animate-shimmer flex flex-col items-center justify-center p-6 text-center space-y-3 bg-[#06080d]">
         <div class="w-10 h-10 rounded-full border-2 border-amber-400 border-t-transparent animate-spin"></div>
-        <div class="text-xs font-bold text-amber-300">Rendering Master Frame 0${sceneNum}...</div>
-        <div class="text-[10px] text-slate-400 font-mono">9:16 Vertical • Aspect Ratio Lock</div>
+        <div class="text-xs font-bold text-amber-300">Google Gemini Banana Pro Rendering...</div>
+        <div class="text-[10px] text-slate-400 font-mono">gemini-3.1-flash-image • 9:16 Vertical</div>
       </div>
     `;
   }
@@ -1499,11 +1577,11 @@ async function handleGenerateAllMasterFrames() {
   }
 
   els.btnGenerateAllImages.disabled = true;
-  els.btnGenerateAllImages.innerHTML = `<span class="animate-spin inline-block mr-1.5">⏳</span> Rendering 6 Master Frames...`;
+  els.btnGenerateAllImages.innerHTML = `<span class="animate-spin inline-block mr-1.5">⏳</span> Rendering 6 Frame (Banana Pro)...`;
 
   try {
     for (const scene of scenes) {
-      showToast(`Merender Master Frame 0${scene.number}...`);
+      showToast(`Merender Master Frame 0${scene.number} dengan Gemini Banana Pro...`);
       await generateSceneImage(scene.number);
     }
     showToast('Semua 6 Master Frame selesai di-render!');
@@ -1512,7 +1590,7 @@ async function handleGenerateAllMasterFrames() {
     showToast(`Error: ${err.message}`);
   } finally {
     els.btnGenerateAllImages.disabled = false;
-    els.btnGenerateAllImages.innerHTML = `<i data-lucide="palette" class="w-4 h-4"></i><span>Generate Semua 6 Master Frame</span>`;
+    els.btnGenerateAllImages.innerHTML = `<i data-lucide="sparkles" class="w-4 h-4"></i><span>Generate Semua 6 Master Frame (Banana Pro)</span>`;
     lucide.createIcons();
   }
 }
@@ -1851,10 +1929,11 @@ function renderMasterPackUI() {
 }
 
 function renderSoundtrackUI() {
+  if (!els.soundtrackContainer) return;
   const mp = state.project.masterPack;
   const st = state.project.soundtrack;
 
-  if (!mp) {
+  if (!mp && !st) {
     els.soundtrackContainer.classList.add('hidden');
     return;
   }
@@ -1864,8 +1943,8 @@ function renderSoundtrackUI() {
   if (!st) {
     els.soundtrackResultBox.innerHTML = `
       <div class="p-4 rounded-xl bg-dark-card border border-dark-border text-center space-y-2">
-        <p class="text-xs text-slate-300 font-medium">Master Pack telah disetujui! Ingin membuat prompt soundtrack musik khusus untuk short video ini?</p>
-        <p class="text-[11px] text-slate-500">Klik tombol &ldquo;Generate Music Prompt&rdquo; di atas untuk menyusun prompt Suno / Udio AI berdurasi 60 detik yang selaras dengan 6 scene.</p>
+        <p class="text-xs text-slate-300 font-medium">Soundtrack akan otomatis dirancang saat Anda membuat Master Production Pack di Fase 02.</p>
+        <p class="text-[11px] text-slate-500">Klik tombol &ldquo;Regenerate Musik&rdquo; di atas untuk menyusun prompt Suno / Udio AI berdurasi 60 detik yang selaras dengan 6 scene.</p>
       </div>
     `;
     return;
@@ -2002,7 +2081,7 @@ function renderScenesUI() {
             <div class="flex items-center justify-between">
               <span class="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
                 <i data-lucide="image" class="w-3.5 h-3.5"></i>
-                <span>Visual Master Frame (9:16)</span>
+                <span>Master Frame 9:16 (Banana Pro)</span>
               </span>
               <div class="flex items-center gap-1.5">
                 ${scene.imageUrl ? `
@@ -2029,15 +2108,15 @@ function renderScenesUI() {
                     <i data-lucide="image" class="w-6 h-6 stroke-1"></i>
                   </div>
                   <p class="text-xs text-slate-300 font-semibold">Master Frame Belum Ada</p>
-                  <p class="text-[10px] text-slate-500">Klik tombol di bawah untuk render AI gambar vertikal 9:16</p>
+                  <p class="text-[10px] text-slate-500">Klik tombol di bawah untuk render AI gambar vertikal 9:16 dengan Gemini Banana Pro</p>
                 </div>
               `}
             </div>
 
             <!-- Action Button -->
-            <button class="btn-gen-scene-img w-full py-2.5 rounded-xl ${scene.imageUrl ? 'bg-dark-card hover:bg-dark-hover text-slate-300 border border-dark-border' : 'bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-500 hover:to-orange-400 text-black font-extrabold shadow-lg shadow-amber-600/20'} text-xs font-bold transition flex items-center justify-center gap-1.5" data-scene="${scene.number}">
+            <button class="btn-gen-scene-img w-full py-2.5 rounded-xl ${scene.imageUrl ? 'bg-dark-card hover:bg-dark-hover text-slate-300 border border-dark-border' : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-extrabold shadow-lg shadow-amber-500/20'} text-xs font-bold transition flex items-center justify-center gap-1.5" data-scene="${scene.number}">
               <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-              <span>${scene.imageUrl ? 'Regenerate Frame (9:16)' : 'Generate Master Frame (9:16)'}</span>
+              <span>${scene.imageUrl ? 'Regenerate Frame (Banana Pro)' : 'Generate Master Frame (Banana Pro 9:16)'}</span>
             </button>
           </div>
 
@@ -2260,10 +2339,11 @@ function renderAssembleUI() {
   const scenes = state.project.scenes || [];
   if (scenes.length === 0) {
     els.voiceoverScriptContent.innerHTML = `<p class="text-slate-500 italic">Belum ada scene. Selesaikan Fase 2 & 3 terlebih dahulu.</p>`;
+    renderSoundtrackUI();
     return;
   }
 
-  let html = scenes.map(s => `
+  els.voiceoverScriptContent.innerHTML = scenes.map(s => `
     <div class="p-3 rounded-xl bg-dark-card border border-dark-border space-y-1">
       <div class="flex items-center justify-between text-[11px]">
         <span class="font-bold text-orange-400">SCENE 0${s.number} (~10s)</span>
@@ -2275,25 +2355,7 @@ function renderAssembleUI() {
     </div>
   `).join('');
 
-  if (state.project.soundtrack) {
-    const st = state.project.soundtrack;
-    html += `
-      <div class="mt-4 p-4 rounded-xl bg-emerald-950/20 border border-emerald-500/30 space-y-2 text-xs">
-        <div class="flex items-center justify-between">
-          <strong class="text-emerald-400 uppercase text-[10px] tracking-wider flex items-center gap-1.5">
-            <i data-lucide="music" class="w-3.5 h-3.5"></i>
-            <span>Soundtrack Cue (Suno / Udio AI): ${st.title}</span>
-          </strong>
-          <span class="text-[10px] text-slate-400 font-mono">${st.bpm} • ${st.mood}</span>
-        </div>
-        <p class="text-slate-300 font-mono text-[11px] bg-[#05070c] p-2.5 rounded-lg border border-dark-border select-all max-h-24 overflow-y-auto">
-          ${st.fullPrompt}
-        </p>
-      </div>
-    `;
-  }
-
-  els.voiceoverScriptContent.innerHTML = html;
+  renderSoundtrackUI();
   lucide.createIcons();
 }
 
