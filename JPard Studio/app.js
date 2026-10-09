@@ -23,6 +23,7 @@ const DEFAULT_PROJECT = {
   sourceInput: '',
   imageReference: null,
   soundtrack: null,
+  assetSheet: null,
   theme: 'bebas',
   continuityLevel: 'B',
   sourcePack: null,
@@ -118,9 +119,33 @@ const els = {
   btnGenerateSoundtrack: document.getElementById('btnGenerateSoundtrack'),
   soundtrackResultBox: document.getElementById('soundtrackResultBox'),
   masterPackFooter: document.getElementById('masterPackFooter'),
-  btnProceedToScenes: document.getElementById('btnProceedToScenes'),
+  btnProceedToAsset: document.getElementById('btnProceedToAsset'),
 
-  // Tab 3: Scenes
+  // Tab 3: Asset & Anchor Sheet
+  btnAssetTypePills: document.querySelectorAll('.btn-asset-type-pill'),
+  chkUseAsAnchor: document.getElementById('chkUseAsAnchor'),
+  assetActionsBar: document.getElementById('assetActionsBar'),
+  btnFullscreenAssetImg: document.getElementById('btnFullscreenAssetImg'),
+  btnDownloadAssetImg: document.getElementById('btnDownloadAssetImg'),
+  assetCanvasContainer: document.getElementById('assetCanvasContainer'),
+  assetCanvasEmpty: document.getElementById('assetCanvasEmpty'),
+  assetCanvasImg: document.getElementById('assetCanvasImg'),
+  inputCustomAssetFile: document.getElementById('inputCustomAssetFile'),
+  btnUploadCustomAsset: document.getElementById('btnUploadCustomAsset'),
+  assetStatusBox: document.getElementById('assetStatusBox'),
+  assetStatusText: document.getElementById('assetStatusText'),
+  inputAssetPrompt: document.getElementById('inputAssetPrompt'),
+  inputAssetNegative: document.getElementById('inputAssetNegative'),
+  btnResetAssetPrompt: document.getElementById('btnResetAssetPrompt'),
+  btnGenerateAssetSheet: document.getElementById('btnGenerateAssetSheet'),
+  btnProceedToScenesFromAsset: document.getElementById('btnProceedToScenesFromAsset'),
+
+  // Tab 4: Scenes
+  anchorActiveBanner: document.getElementById('anchorActiveBanner'),
+  anchorThumbBox: document.getElementById('anchorThumbBox'),
+  anchorBadgeStatus: document.getElementById('anchorBadgeStatus'),
+  anchorDescriptionText: document.getElementById('anchorDescriptionText'),
+  btnJumpToAssetTab: document.getElementById('btnJumpToAssetTab'),
   btnGenerateAllImages: document.getElementById('btnGenerateAllImages'),
   scenesEmpty: document.getElementById('scenesEmpty'),
   scenesList: document.getElementById('scenesList'),
@@ -205,7 +230,50 @@ function setupEventListeners() {
 
   // Proceed buttons
   els.btnProceedToDirector?.addEventListener('click', () => switchTab('tab-director'));
-  els.btnProceedToScenes?.addEventListener('click', () => switchTab('tab-scenes'));
+  els.btnProceedToAsset?.addEventListener('click', () => switchTab('tab-asset'));
+  els.btnProceedToScenesFromAsset?.addEventListener('click', () => switchTab('tab-scenes'));
+  els.btnJumpToAssetTab?.addEventListener('click', () => switchTab('tab-asset'));
+
+  // Asset Sheet Event Listeners
+  els.btnAssetTypePills?.forEach(pill => {
+    pill.addEventListener('click', () => {
+      setAssetSheetType(pill.dataset.type);
+    });
+  });
+
+  els.chkUseAsAnchor?.addEventListener('change', (e) => {
+    if (!state.project.assetSheet) {
+      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+    }
+    state.project.assetSheet.isAnchorActive = e.target.checked;
+    saveCurrentProject();
+    renderAssetSheetUI();
+    renderAnchorBannerUI();
+  });
+
+  els.btnGenerateAssetSheet?.addEventListener('click', handleGenerateAssetSheet);
+  els.btnResetAssetPrompt?.addEventListener('click', resetAssetPrompt);
+  els.btnUploadCustomAsset?.addEventListener('click', () => els.inputCustomAssetFile?.click());
+  els.inputCustomAssetFile?.addEventListener('change', handleCustomAssetUpload);
+  els.btnFullscreenAssetImg?.addEventListener('click', () => {
+    if (state.project.assetSheet?.imageData) openImageModal(state.project.assetSheet.imageData);
+  });
+
+  els.inputAssetPrompt?.addEventListener('input', (e) => {
+    if (!state.project.assetSheet) {
+      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+    }
+    state.project.assetSheet.prompt = e.target.value;
+    saveCurrentProject();
+  });
+
+  els.inputAssetNegative?.addEventListener('input', (e) => {
+    if (!state.project.assetSheet) {
+      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+    }
+    state.project.assetSheet.negativePrompt = e.target.value;
+    saveCurrentProject();
+  });
 
   // Theme dropdown custom
   els.selectTheme?.addEventListener('change', (e) => {
@@ -431,6 +499,14 @@ const SAMPLE_PACKS = {
     reference: "Video dokumenter tentang bagaimana koloni semut bawah tanah membangun mega-struktur rumit dengan lorong ventilasi, ruang penyimpanan, dan jembatan hidup yang terstruktur rapi melebihi arsitektur manusia.",
     theme: "dark sci-fi documentary",
     level: "A",
+    assetSheet: {
+      type: "world",
+      title: "Subterranean World & Environment Sheet",
+      prompt: "Concept art style and environment sheet of a colossal subterranean bio-megacity inside a volcanic cavern, monolithic brutalist bridges connecting organic chitin towers, glowing cyan conduits, multi-angle views and texture details, 35mm cinematic lens, rich texture, dark basalt rock, moody atmospheric haze, 8k resolution, cinematic color grade --ar 9:16 --no humans, blur",
+      negativePrompt: "multiple different faces, distorted anatomy, blur, text, watermark, split framing",
+      imageData: null,
+      isAnchorActive: true
+    },
     sourcePack: {
       subject: "Struktur koloni bawah tanah dengan arsitektur organik hiper-kompleks",
       coreIdea: "Masyarakat masa depan dan arsitektur raksasa yang terinspirasi oleh sistem koloni semut purba.",
@@ -587,6 +663,14 @@ const SAMPLE_PACKS = {
     reference: "Kisah astronaut solo yang mendarat di planet gurun merah dan menemukan monolit kristal yang merefleksikan bayangan bumi masa lalu.",
     theme: "dark sci-fi documentary",
     level: "B",
+    assetSheet: {
+      type: "character",
+      title: "Solo Astronaut Character Turnaround Sheet",
+      prompt: "Character turnaround model sheet of a lone deep-space astronaut in a weathered white and slate-grey exploration pressure suit with matte gold reflective helmet visor, multiple angles showing front view, 3/4 view, and profile view, clean neutral desert studio lighting, high resolution photorealistic render, 8k, Unreal Engine 5 aesthetic, cinematic character concept --ar 9:16 --no multiple people, deformed limbs",
+      negativePrompt: "cartoon, distorted helmet, deformed fingers, extra limbs",
+      imageData: null,
+      isAnchorActive: true
+    },
     sourcePack: {
       subject: "Astronaut dan monolit kristal di gurun planet merah",
       coreIdea: "Pertemuan antara kesunyian kosmis dan memori bumi yang terpantul di kristal purba.",
@@ -743,6 +827,14 @@ const SAMPLE_PACKS = {
     reference: "Iklan luxury komersial untuk parfum mewah berbasis bahan alam amber dan mawar hitam di istana marmer Venesia.",
     theme: "luxury commercial",
     level: "C",
+    assetSheet: {
+      type: "object",
+      title: "Luxury Perfume Bottle Turntable Sheet",
+      prompt: "Product turntable 360 reference sheet of a luxury rectangular faceted crystal perfume bottle with textured gold octagonal cap, amber liquid inside, multi-angle product design showing front angle, 45 degree hero angle, and top view, black marble pedestal with gold veins, razor-sharp studio caustics, ultra luxury commercial photography --ar 9:16 --no distorted glass, extra caps",
+      negativePrompt: "distorted glass, blurry, low quality, warped labels",
+      imageData: null,
+      isAnchorActive: true
+    },
     sourcePack: {
       subject: "Botol parfum kristal kaca bersudut tajam dengan esensi amber mawar",
       coreIdea: "Kemewahan abadi yang menggabungkan keanggunan marmer klasik dan cairan wangi yang berkilau.",
@@ -910,6 +1002,9 @@ function applyPreset(presetKey) {
   state.project.scenes = pack.scenes;
   state.project.title = pack.masterPack.title;
   state.project.soundtrack = generateSmartSoundtrack(pack.masterPack, pack.scenes);
+  state.project.assetSheet = pack.assetSheet 
+    ? JSON.parse(JSON.stringify(pack.assetSheet)) 
+    : generateDefaultAssetSheet(pack.masterPack, pack.level, pack.sourcePack);
 
   saveCurrentProject();
   renderAll();
@@ -1169,13 +1264,18 @@ Output ONLY valid JSON matching this schema:
       state.project.soundtrack = generateSmartSoundtrack(masterData, scenesData);
     }
 
+    // Auto-prepare Master Asset Sheet for Visual Anchoring (Tab 3)
+    state.project.assetSheet = generateDefaultAssetSheet(masterData, state.project.continuityLevel, state.project.sourcePack);
+
     saveCurrentProject();
     renderMasterPackUI();
+    renderAssetSheetUI();
+    renderAnchorBannerUI();
     renderScenesUI();
     renderQCMatrixUI();
     renderAssembleUI();
 
-    showToast('Master Production Pack & 6 Scene (+ Soundtrack) berhasil dibuat!');
+    showToast('Master Production Pack, Asset Sheet & 6 Scene (+ Soundtrack) berhasil dibuat!');
   } catch (err) {
     console.error(err);
     showToast(`Error: ${err.message}. Menggunakan generator pintar.`);
@@ -1183,8 +1283,11 @@ Output ONLY valid JSON matching this schema:
     state.project.masterPack = fallback.masterPack;
     state.project.scenes = fallback.scenes;
     state.project.soundtrack = generateSmartSoundtrack(fallback.masterPack, fallback.scenes);
+    state.project.assetSheet = generateDefaultAssetSheet(fallback.masterPack, state.project.continuityLevel, state.project.sourcePack);
     saveCurrentProject();
     renderMasterPackUI();
+    renderAssetSheetUI();
+    renderAnchorBannerUI();
     renderScenesUI();
     renderQCMatrixUI();
     renderAssembleUI();
@@ -1422,7 +1525,7 @@ async function handleGenerateSoundtrack() {
 // Model: gemini-3.1-flash-image
 // ------------------------------------------
 
-async function callImageGeneration(promptText, aspectRatio = '9:16') {
+async function callImageGeneration(promptText, aspectRatio = '9:16', referenceImage = null) {
   if (!state.apiKey || state.apiKey.trim().length < 10) {
     showToast('⚠️ Masukkan Google Gemini API Key di menu Pengaturan (ikon Gear)!');
     openSettings();
@@ -1440,9 +1543,33 @@ async function callImageGeneration(promptText, aspectRatio = '9:16') {
   // Primary Call: Google Gemini Banana Pro via official Interactions API
   const interactionsEndpoint = `https://generativelanguage.googleapis.com/v1beta/interactions`;
   
+  let inputPayload;
+  if (referenceImage) {
+    const rawBase64 = referenceImage.startsWith('data:') 
+      ? referenceImage.split(',')[1] 
+      : referenceImage;
+    const mime = referenceImage.startsWith('data:')
+      ? (referenceImage.split(';')[0].replace('data:', '') || 'image/jpeg')
+      : 'image/jpeg';
+
+    inputPayload = [
+      {
+        type: 'text',
+        text: `Create the scene master frame adhering to this prompt: ${cleanPrompt}. Maintain exact subject appearance, character design, materials, and lighting consistency from the reference image attached.`
+      },
+      {
+        type: 'image',
+        data: rawBase64,
+        mime_type: mime
+      }
+    ];
+  } else {
+    inputPayload = cleanPrompt;
+  }
+
   const interactionPayload = {
     model: 'gemini-3.1-flash-image',
-    input: cleanPrompt,
+    input: inputPayload,
     response_format: {
       type: 'image',
       aspect_ratio: aspectRatio,
@@ -1546,18 +1673,29 @@ async function generateSceneImage(sceneNum) {
     btnGen.innerHTML = `<span class="animate-spin inline-block mr-1">⏳</span> Generating...`;
   }
 
+  let activeRef = null;
+  let anchorName = '';
+  if (state.project.assetSheet?.isAnchorActive && state.project.assetSheet?.imageData) {
+    activeRef = state.project.assetSheet.imageData;
+    anchorName = state.project.assetSheet.title || 'Asset Anchor Sheet';
+  } else if (state.project.imageReference?.dataUrl || state.project.imageReference?.data) {
+    activeRef = state.project.imageReference.dataUrl || state.project.imageReference.data;
+    anchorName = 'Foto Referensi Fase 01';
+  }
+
   if (canvasEl) {
     canvasEl.innerHTML = `
       <div class="w-full h-full min-h-[360px] rounded-xl animate-shimmer flex flex-col items-center justify-center p-6 text-center space-y-3 bg-[#06080d]">
         <div class="w-10 h-10 rounded-full border-2 border-amber-400 border-t-transparent animate-spin"></div>
         <div class="text-xs font-bold text-amber-300">Google Gemini Banana Pro Rendering...</div>
         <div class="text-[10px] text-slate-400 font-mono">gemini-3.1-flash-image • 9:16 Vertical</div>
+        ${activeRef ? `<div class="text-[10px] text-purple-300 font-semibold px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/30">🔒 Terkunci Anchor: ${anchorName}</div>` : ''}
       </div>
     `;
   }
 
   try {
-    const imgUrl = await callImageGeneration(scene.masterFramePrompt, '9:16');
+    const imgUrl = await callImageGeneration(scene.masterFramePrompt, '9:16', activeRef);
     scene.imageUrl = imgUrl;
     saveCurrentProject();
     renderScenesUI();
@@ -1600,6 +1738,155 @@ function openImageModal(url) {
   els.modalPreviewImg.src = url;
   els.btnDownloadModalImg.href = url;
   els.modalImagePreview.classList.remove('hidden');
+}
+
+// ------------------------------------------
+// GOOGLE GEMINI BANANA PRO (ASSET & ANCHOR SHEET)
+// ------------------------------------------
+
+function setAssetSheetType(type) {
+  if (!state.project.assetSheet) {
+    state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack, type);
+  } else {
+    state.project.assetSheet.type = type;
+    const generated = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack, type);
+    state.project.assetSheet.prompt = generated.prompt;
+    state.project.assetSheet.title = generated.title;
+  }
+  saveCurrentProject();
+  renderAssetSheetUI();
+  renderAnchorBannerUI();
+  showToast(`Tipe Asset diubah ke: ${state.project.assetSheet.title}`);
+}
+
+function resetAssetPrompt() {
+  const currentType = state.project.assetSheet?.type || (state.project.continuityLevel === 'B' ? 'character' : (state.project.continuityLevel === 'C' ? 'object' : 'world'));
+  const generated = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack, currentType);
+  if (!state.project.assetSheet) {
+    state.project.assetSheet = generated;
+  } else {
+    state.project.assetSheet.prompt = generated.prompt;
+    state.project.assetSheet.title = generated.title;
+  }
+  saveCurrentProject();
+  renderAssetSheetUI();
+  showToast('Prompt Asset Sheet direset ke format optimal!');
+}
+
+function handleCustomAssetUpload(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    showToast('Harap pilih file gambar (.jpg, .png, .webp)!');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const dataUrl = event.target.result;
+    if (!state.project.assetSheet) {
+      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+    }
+    state.project.assetSheet.imageData = dataUrl;
+    state.project.assetSheet.isAnchorActive = true;
+    saveCurrentProject();
+    renderAssetSheetUI();
+    renderAnchorBannerUI();
+    showToast('Gambar custom berhasil diunggah sebagai Visual Anchor!');
+  };
+  reader.readAsDataURL(file);
+}
+
+async function handleGenerateAssetSheet() {
+  if (!state.project.masterPack) {
+    showToast('Selesaikan Fase 02 (Director Lock) terlebih dahulu!');
+    return;
+  }
+
+  const promptText = els.inputAssetPrompt?.value?.trim() || state.project.assetSheet?.prompt;
+  if (!promptText) {
+    showToast('Prompt Asset Sheet belum diisi.');
+    return;
+  }
+
+  els.btnGenerateAssetSheet.disabled = true;
+  els.btnGenerateAssetSheet.innerHTML = `<span class="animate-spin inline-block mr-2">⏳</span> Rendering Asset Sheet dengan Banana Pro...`;
+
+  els.assetCanvasEmpty?.classList.add('hidden');
+  els.assetCanvasImg?.classList.add('hidden');
+  const tempCanvas = document.createElement('div');
+  tempCanvas.className = 'w-full h-full min-h-[360px] rounded-xl animate-shimmer flex flex-col items-center justify-center p-6 text-center space-y-3 bg-[#06080d]';
+  tempCanvas.innerHTML = `
+    <div class="w-10 h-10 rounded-full border-2 border-purple-400 border-t-transparent animate-spin"></div>
+    <div class="text-xs font-bold text-purple-300">Google Gemini Banana Pro Rendering...</div>
+    <div class="text-[10px] text-slate-400 font-mono">Master Asset Sheet • 9:16 Vertical</div>
+  `;
+  els.assetCanvasContainer?.appendChild(tempCanvas);
+
+  try {
+    const imgUrl = await callImageGeneration(promptText, '9:16');
+    if (!state.project.assetSheet) {
+      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+    }
+    state.project.assetSheet.imageData = imgUrl;
+    state.project.assetSheet.isAnchorActive = true;
+    saveCurrentProject();
+    renderAssetSheetUI();
+    renderAnchorBannerUI();
+    showToast('Asset Sheet berhasil dibuat & dikunci sebagai Visual Anchor!');
+  } catch (err) {
+    console.error(err);
+    showToast(`Gagal render Asset Sheet: ${err.message}`);
+    renderAssetSheetUI();
+  } finally {
+    if (tempCanvas.parentNode) tempCanvas.remove();
+    els.btnGenerateAssetSheet.disabled = false;
+    els.btnGenerateAssetSheet.innerHTML = `<i data-lucide="sparkles" class="w-4 h-4"></i><span>GENERATE ASSET SHEET (BANANA PRO)</span>`;
+    lucide.createIcons();
+  }
+}
+
+function generateDefaultAssetSheet(masterPack, continuityLevel, sourcePack, forcedType = null) {
+  let type = forcedType;
+  if (!type) {
+    if (continuityLevel === 'B') type = 'character';
+    else if (continuityLevel === 'C') type = 'object';
+    else if (continuityLevel === 'A') type = 'world';
+    else type = 'thumbnail';
+  }
+
+  const title = masterPack?.title || 'Daily Short';
+  const style = masterPack?.visualStyle || 'Cinematic Photorealism';
+  const color = masterPack?.globalVisualLock?.colorPalette || 'High contrast film grade';
+  const lighting = masterPack?.globalVisualLock?.lightingLanguage || 'Cinematic lighting';
+  const subject = sourcePack?.storyElements?.character || sourcePack?.storyElements?.object || sourcePack?.subject || 'Main subject';
+  const location = sourcePack?.storyElements?.location || 'Atmospheric setting';
+
+  let prompt = '';
+  let sheetTitle = '';
+
+  if (type === 'character') {
+    sheetTitle = 'Character Turnaround Model Sheet';
+    prompt = `Character turnaround model sheet and visual reference sheet of ${subject}, showing front view, 3/4 view, and profile angle in 9:16 vertical composition. Wearing authentic cinematic clothing and gear matching ${title}. Clean neutral studio background, 50mm portrait lens, ultra high resolution photorealism, detailed facial features, consistent hair and skin texture, ${lighting}, color grade: ${color} --ar 9:16 --no multiple different people, deformed hands, extra limbs, cartoon`;
+  } else if (type === 'object') {
+    sheetTitle = 'Object & Product Turntable Sheet';
+    prompt = `Product design turntable 360 reference sheet of ${sourcePack?.storyElements?.object || subject}, multi-angle orthographic and hero perspective views in 9:16 vertical composition. Pristine studio product photography, razor sharp macro surface texture, reflections and material details, ${lighting}, color palette: ${color}, clean dark backdrop, commercial masterpiece --ar 9:16 --no blurry, distorted proportions, extra objects`;
+  } else if (type === 'world') {
+    sheetTitle = 'World & Style Environment Sheet';
+    prompt = `Environment and architectural concept style sheet of ${location}, showcasing key environmental structures, atmospheric lighting conditions, and texture details in 9:16 vertical layout. Visual style: ${style}. Lighting rules: ${lighting}. Color palette: ${color}. Anamorphic 35mm lens, atmospheric haze, monumental scale, cinematic worldbuilding guide --ar 9:16 --no blurry spots, low quality, oversaturated cartoon`;
+  } else {
+    sheetTitle = 'Hero Keyframe & Poster Thumbnail';
+    prompt = `Iconic high-impact hero keyframe poster and opening thumbnail for "${title}", featuring ${subject} in ${location}. Dramatic dynamic low-angle composition with maximum curiosity hook, intense cinematic rim lighting, volumetrics, 8k resolution, ${style}, masterpiece composition ready for viral short video cover --ar 9:16 --no text watermark, amateur, blurry`;
+  }
+
+  return {
+    type: type,
+    title: sheetTitle,
+    prompt: prompt,
+    negativePrompt: 'multiple different faces, distorted anatomy, blur, text, watermark, split framing',
+    imageData: null,
+    isAnchorActive: true,
+    createdAt: new Date().toISOString()
+  };
 }
 
 // ==========================================
@@ -1760,6 +2047,8 @@ function renderAll() {
   renderImageRefUI();
   renderSourcePackUI();
   renderMasterPackUI();
+  renderAssetSheetUI();
+  renderAnchorBannerUI();
   renderSoundtrackUI();
   renderScenesUI();
   renderQCMatrixUI();
@@ -1926,6 +2215,102 @@ function renderMasterPackUI() {
       </div>
     </div>
   `;
+}
+
+function renderAssetSheetUI() {
+  const as = state.project.assetSheet;
+  const currentType = as?.type || (state.project.continuityLevel === 'B' ? 'character' : (state.project.continuityLevel === 'C' ? 'object' : 'world'));
+
+  // Update pills active state
+  els.btnAssetTypePills?.forEach(pill => {
+    if (pill.dataset.type === currentType) {
+      pill.classList.add('bg-purple-600', 'text-white');
+      pill.classList.remove('bg-dark-card', 'text-slate-300');
+    } else {
+      pill.classList.remove('bg-purple-600', 'text-white');
+      pill.classList.add('bg-dark-card', 'text-slate-300');
+    }
+  });
+
+  // Checkbox anchor
+  if (els.chkUseAsAnchor) {
+    els.chkUseAsAnchor.checked = as ? as.isAnchorActive !== false : true;
+  }
+
+  // Inputs
+  if (els.inputAssetPrompt && as?.prompt) {
+    els.inputAssetPrompt.value = as.prompt;
+  }
+  if (els.inputAssetNegative && as?.negativePrompt) {
+    els.inputAssetNegative.value = as.negativePrompt;
+  }
+
+  // Canvas Image preview
+  if (as && as.imageData) {
+    els.assetCanvasEmpty?.classList.add('hidden');
+    els.assetCanvasImg?.classList.remove('hidden');
+    if (els.assetCanvasImg) els.assetCanvasImg.src = as.imageData;
+    els.assetActionsBar?.classList.remove('hidden');
+    if (els.btnDownloadAssetImg) els.btnDownloadAssetImg.href = as.imageData;
+
+    if (els.assetStatusText) {
+      if (as.isAnchorActive !== false) {
+        els.assetStatusText.className = 'font-bold text-emerald-400 flex items-center gap-1.5';
+        els.assetStatusText.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Aktif (Visual Anchor 6-Scene)</span>';
+      } else {
+        els.assetStatusText.className = 'font-bold text-slate-400';
+        els.assetStatusText.textContent = 'Nonaktif (Prompt Standalone)';
+      }
+    }
+  } else {
+    els.assetCanvasEmpty?.classList.remove('hidden');
+    els.assetCanvasImg?.classList.add('hidden');
+    if (els.assetCanvasImg) els.assetCanvasImg.src = '';
+    els.assetActionsBar?.classList.add('hidden');
+    if (els.assetStatusText) {
+      els.assetStatusText.className = 'font-bold text-slate-400';
+      els.assetStatusText.textContent = 'Belum Ada Gambar';
+    }
+  }
+
+  lucide.createIcons();
+}
+
+function renderAnchorBannerUI() {
+  const as = state.project.assetSheet;
+  const imgRef = state.project.imageReference;
+
+  if (as && as.imageData && as.isAnchorActive !== false) {
+    if (els.anchorThumbBox) els.anchorThumbBox.innerHTML = `<img src="${as.imageData}" class="w-full h-full object-cover">`;
+    if (els.anchorBadgeStatus) {
+      els.anchorBadgeStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+      els.anchorBadgeStatus.textContent = `Aktif (${as.title || 'Asset Sheet'})`;
+    }
+    if (els.anchorDescriptionText) {
+      els.anchorDescriptionText.textContent = `Google Gemini Banana Pro mengunci konsistensi Scene 1-6 dengan acuan visual Asset Sheet ini.`;
+    }
+  } else if (imgRef && (imgRef.dataUrl || imgRef.data)) {
+    const src = imgRef.dataUrl || `data:${imgRef.mimeType || 'image/jpeg'};base64,${imgRef.data}`;
+    if (els.anchorThumbBox) els.anchorThumbBox.innerHTML = `<img src="${src}" class="w-full h-full object-cover">`;
+    if (els.anchorBadgeStatus) {
+      els.anchorBadgeStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30';
+      els.anchorBadgeStatus.textContent = 'Aktif (Foto Input Fase 01)';
+    }
+    if (els.anchorDescriptionText) {
+      els.anchorDescriptionText.textContent = `Menggunakan foto referensi dari Fase 01 sebagai acuan visual scene.`;
+    }
+  } else {
+    if (els.anchorThumbBox) els.anchorThumbBox.innerHTML = `<i data-lucide="layers" class="w-5 h-5 text-slate-500"></i>`;
+    if (els.anchorBadgeStatus) {
+      els.anchorBadgeStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-dark-card text-slate-400 border border-dark-border';
+      els.anchorBadgeStatus.textContent = 'Standby (Tanpa Anchor)';
+    }
+    if (els.anchorDescriptionText) {
+      els.anchorDescriptionText.textContent = `Scene akan di-render mandiri. Anda bisa membuat Asset Sheet di Tab 3 untuk mengunci konsistensi karakter/objek.`;
+    }
+  }
+
+  lucide.createIcons();
 }
 
 function renderSoundtrackUI() {
@@ -2383,7 +2768,16 @@ Tema: ${p.theme} | Continuity: Level ${p.continuityLevel}
 - **Camera**: ${p.masterPack?.globalVisualLock?.cameraLanguage || '-'}
 - **World Rules**: ${p.masterPack?.globalVisualLock?.worldRules || '-'}
 
-${p.soundtrack ? `## 3. SOUNDTRACK & MUSIC SPEC (SUNO / UDIO)
+${p.assetSheet ? `## 3. MASTER VISUAL ANCHOR & ASSET SHEET
+- **Type**: ${p.assetSheet.type.toUpperCase()} (${p.assetSheet.title})
+- **Anchor Status**: ${p.assetSheet.isAnchorActive ? 'Active Anchor for Scene 1-6' : 'Standalone'}
+- **Asset Prompt**:
+\`\`\`
+${p.assetSheet.prompt}
+\`\`\`
+` : ''}
+
+${p.soundtrack ? `## 4. SOUNDTRACK & MUSIC SPEC (SUNO / UDIO)
 - **Title**: ${p.soundtrack.title}
 - **Genre & Tags**: ${p.soundtrack.genreTags}
 - **BPM & Mood**: ${p.soundtrack.bpm} • ${p.soundtrack.mood}
@@ -2393,7 +2787,7 @@ ${p.soundtrack.fullPrompt}
 \`\`\`
 ` : ''}
 
-## 4. SCENE BREAKDOWN (6 SCENES)
+## 5. SCENE BREAKDOWN (6 SCENES)
 ${(p.scenes || []).map(s => `
 ### Scene 0${s.number}: ${s.title}
 - **Fungsi**: ${s.storyFunction}
