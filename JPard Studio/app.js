@@ -37,9 +37,15 @@ const DEFAULT_PROJECT = {
   diagnoses: {}
 };
 
+let savedModel = localStorage.getItem(STORAGE_KEYS.MODEL) || 'gemini-3.8-flash';
+if (!savedModel || savedModel.includes('2.5') || savedModel.includes('1.5') || savedModel.includes('2.0')) {
+  savedModel = 'gemini-3.8-flash';
+  localStorage.setItem(STORAGE_KEYS.MODEL, 'gemini-3.8-flash');
+}
+
 let state = {
   apiKey: localStorage.getItem(STORAGE_KEYS.API_KEY) || '',
-  model: localStorage.getItem(STORAGE_KEYS.MODEL) || 'gemini-2.5-flash',
+  model: savedModel,
   project: JSON.parse(JSON.stringify(DEFAULT_PROJECT)),
   activeTab: 'tab-source',
   timerSeconds: 0,
@@ -895,7 +901,15 @@ async function callGemini(promptText, systemInstruction = '') {
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData?.error?.message || `HTTP error ${res.status}`);
+    const errMsg = errData?.error?.message || `HTTP error ${res.status}`;
+    if (errMsg.includes('no longer available') || errMsg.includes('not found') || errMsg.includes('is not supported')) {
+      if (state.model !== 'gemini-3.8-flash') {
+        state.model = 'gemini-3.8-flash';
+        localStorage.setItem(STORAGE_KEYS.MODEL, 'gemini-3.8-flash');
+        return callGemini(promptText, systemInstruction);
+      }
+    }
+    throw new Error(errMsg);
   }
 
   const data = await res.json();
