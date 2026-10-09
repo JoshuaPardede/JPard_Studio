@@ -24,6 +24,8 @@ const DEFAULT_PROJECT = {
   imageReference: null,
   soundtrack: null,
   assetSheet: null,
+  assetLibrary: [],
+  sequentialChaining: true,
   theme: 'bebas',
   continuityLevel: 'B',
   sourcePack: null,
@@ -91,15 +93,16 @@ const els = {
   btnImportJSON: document.getElementById('btnImportJSON'),
   inputImportFile: document.getElementById('inputImportFile'),
 
-  // Tab 1: Source
+  // Tab 1: Source & Universal Ingest Hub
   inputReference: document.getElementById('inputReference'),
-  imageDropzone: document.getElementById('imageDropzone'),
+  smartDropContainer: document.getElementById('smartDropContainer'),
+  dragOverlay: document.getElementById('dragOverlay'),
   inputImageRef: document.getElementById('inputImageRef'),
-  imageDropPrompt: document.getElementById('imageDropPrompt'),
-  imagePreviewContainer: document.getElementById('imagePreviewContainer'),
+  attachedMediaTray: document.getElementById('attachedMediaTray'),
   imagePreviewImg: document.getElementById('imagePreviewImg'),
   btnRemoveImage: document.getElementById('btnRemoveImage'),
-  imageInfoText: document.getElementById('imageInfoText'),
+  btnBrowseReferenceFile: document.getElementById('btnBrowseReferenceFile'),
+  btnPasteFromClipboard: document.getElementById('btnPasteFromClipboard'),
   selectTheme: document.getElementById('selectTheme'),
   inputCustomTheme: document.getElementById('inputCustomTheme'),
   btnPreset: document.querySelectorAll('.btn-preset'),
@@ -121,7 +124,7 @@ const els = {
   masterPackFooter: document.getElementById('masterPackFooter'),
   btnProceedToAsset: document.getElementById('btnProceedToAsset'),
 
-  // Tab 3: Asset & Anchor Sheet
+  // Tab 3: Asset & Anchor Sheet + Library
   btnAssetTypePills: document.querySelectorAll('.btn-asset-type-pill'),
   chkUseAsAnchor: document.getElementById('chkUseAsAnchor'),
   assetActionsBar: document.getElementById('assetActionsBar'),
@@ -130,6 +133,14 @@ const els = {
   assetCanvasContainer: document.getElementById('assetCanvasContainer'),
   assetCanvasEmpty: document.getElementById('assetCanvasEmpty'),
   assetCanvasImg: document.getElementById('assetCanvasImg'),
+  assetVersionReelContainer: document.getElementById('assetVersionReelContainer'),
+  assetVersionCountBadge: document.getElementById('assetVersionCountBadge'),
+  assetVersionReel: document.getElementById('assetVersionReel'),
+  assetLibrarySection: document.getElementById('assetLibrarySection'),
+  assetLibraryCountBadge: document.getElementById('assetLibraryCountBadge'),
+  btnUploadToAssetLibrary: document.getElementById('btnUploadToAssetLibrary'),
+  inputAssetLibraryUpload: document.getElementById('inputAssetLibraryUpload'),
+  assetLibraryGrid: document.getElementById('assetLibraryGrid'),
   inputCustomAssetFile: document.getElementById('inputCustomAssetFile'),
   btnUploadCustomAsset: document.getElementById('btnUploadCustomAsset'),
   assetStatusBox: document.getElementById('assetStatusBox'),
@@ -146,6 +157,7 @@ const els = {
   anchorBadgeStatus: document.getElementById('anchorBadgeStatus'),
   anchorDescriptionText: document.getElementById('anchorDescriptionText'),
   btnJumpToAssetTab: document.getElementById('btnJumpToAssetTab'),
+  chkSequentialChaining: document.getElementById('chkSequentialChaining'),
   btnGenerateAllImages: document.getElementById('btnGenerateAllImages'),
   scenesEmpty: document.getElementById('scenesEmpty'),
   scenesList: document.getElementById('scenesList'),
@@ -196,11 +208,18 @@ function initProject() {
   if (saved) {
     try {
       state.project = JSON.parse(saved);
+      // Clean up residual auto-generated boilerplate if previously saved
+      if (state.project.sourceInput && state.project.sourceInput.startsWith('Video Referensi: "')) {
+        state.project.sourceInput = '';
+      }
     } catch (e) {
       resetProject();
     }
   } else {
     resetProject();
+  }
+  if (els.inputReference) {
+    els.inputReference.value = state.project.sourceInput || '';
   }
   renderAll();
 }
@@ -220,6 +239,12 @@ function saveCurrentProject() {
 }
 
 function setupEventListeners() {
+  // Reference Input Text Sync
+  els.inputReference?.addEventListener('input', (e) => {
+    state.project.sourceInput = e.target.value;
+    saveCurrentProject();
+  });
+
   // Navigation Tabs
   els.navTabs.forEach(tab => {
     tab.addEventListener('click', () => {
@@ -301,35 +326,59 @@ function setupEventListeners() {
     });
   });
 
-  // Image Reference Dropzone
-  els.imageDropzone?.addEventListener('click', (e) => {
-    if (e.target !== els.btnRemoveImage && !els.btnRemoveImage?.contains(e.target)) {
-      els.inputImageRef.click();
+  // Tab 1: Universal Reference Ingest Hub (Drag & Drop, Paste Cmd+V, Browse)
+  els.smartDropContainer?.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    els.dragOverlay?.classList.remove('hidden');
+  });
+
+  els.smartDropContainer?.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    els.dragOverlay?.classList.remove('hidden');
+  });
+
+  els.smartDropContainer?.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    if (e.relatedTarget && !els.smartDropContainer.contains(e.relatedTarget)) {
+      els.dragOverlay?.classList.add('hidden');
     }
+  });
+
+  els.smartDropContainer?.addEventListener('drop', (e) => {
+    e.preventDefault();
+    els.dragOverlay?.classList.add('hidden');
+    if (e.dataTransfer.files?.[0]) {
+      processGenericReferenceFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  els.btnBrowseReferenceFile?.addEventListener('click', () => {
+    els.inputImageRef?.click();
   });
 
   els.inputImageRef?.addEventListener('change', handleImageUpload);
-
-  els.imageDropzone?.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    els.imageDropzone.classList.add('border-orange-500');
-  });
-
-  els.imageDropzone?.addEventListener('dragleave', () => {
-    els.imageDropzone.classList.remove('border-orange-500');
-  });
-
-  els.imageDropzone?.addEventListener('drop', (e) => {
-    e.preventDefault();
-    els.imageDropzone.classList.remove('border-orange-500');
-    if (e.dataTransfer.files?.[0]) {
-      processImageFile(e.dataTransfer.files[0]);
-    }
-  });
+  els.btnPasteFromClipboard?.addEventListener('click', handleClipboardButtonPaste);
+  window.addEventListener('paste', handlePaste);
 
   els.btnRemoveImage?.addEventListener('click', (e) => {
     e.stopPropagation();
     removeImageRef();
+  });
+
+  // Tab 3: Asset Library & Bank Referensi Listeners
+  els.btnUploadToAssetLibrary?.addEventListener('click', () => {
+    els.inputAssetLibraryUpload?.click();
+  });
+  els.inputAssetLibraryUpload?.addEventListener('change', handleAssetLibraryUpload);
+
+  // Tab 4: Sequential Chaining Toggle
+  els.chkSequentialChaining?.addEventListener('change', (e) => {
+    state.project.sequentialChaining = e.target.checked;
+    saveCurrentProject();
+    renderScenesUI();
+    showToast(state.project.sequentialChaining 
+      ? 'Sequential Chaining Aktif: Scene 1 ➔ 2 ➔ ... ➔ 6 Loop' 
+      : 'Sequential Chaining Dimatikan: Semua scene merujuk ke Asset Sheet.');
   });
 
   // Action Buttons
@@ -1394,50 +1443,212 @@ function applyErrorPreset(type) {
 }
 
 // ------------------------------------------
-// MULTIMODAL IMAGE REFERENCE HANDLERS
+// UNIVERSAL REFERENCE INGEST HANDLERS (TAB 1)
+// Supports Drag & Drop, Clipboard Paste (Cmd+V),
+// Images, Video Frame Extraction, Text, and PDF.
 // ------------------------------------------
+
+function handlePaste(e) {
+  const items = e.clipboardData?.items;
+  if (!items || items.length === 0) return;
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item.type && item.type.indexOf('image') !== -1) {
+      const blob = item.getAsFile();
+      if (blob) {
+        processGenericReferenceFile(blob);
+        e.preventDefault();
+        return;
+      }
+    }
+  }
+
+  // If pasting plain text from clipboard outside the textarea
+  if (document.activeElement !== els.inputReference) {
+    const text = e.clipboardData.getData('text');
+    if (text && text.trim().length > 0) {
+      els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + text.trim();
+      state.project.sourceInput = els.inputReference.value;
+      saveCurrentProject();
+      showToast('📋 Teks dari Clipboard berhasil ditambahkan!');
+    }
+  }
+}
+
+async function handleClipboardButtonPaste() {
+  try {
+    if (navigator.clipboard?.read) {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        for (const type of item.types) {
+          if (type.startsWith('image/')) {
+            const blob = await item.getType(type);
+            processGenericReferenceFile(blob);
+            return;
+          }
+        }
+      }
+    }
+
+    const text = await navigator.clipboard.readText();
+    if (text && text.trim().length > 0) {
+      els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + text.trim();
+      state.project.sourceInput = els.inputReference.value;
+      saveCurrentProject();
+      showToast('📋 Teks dari Clipboard berhasil dimasukkan!');
+    } else {
+      showToast('Clipboard kosong atau tidak berisi teks/gambar.');
+    }
+  } catch (err) {
+    console.warn(err);
+    showToast('Silakan tekan tombol Cmd+V / Ctrl+V untuk menempel dari Clipboard.');
+  }
+}
 
 function handleImageUpload(e) {
   const file = e.target.files?.[0];
   if (file) {
-    processImageFile(file);
+    processGenericReferenceFile(file);
   }
 }
 
-function processImageFile(file) {
-  if (!file.type.startsWith('image/')) {
-    showToast('Harap pilih file gambar (.jpg, .png, .webp)!');
-    return;
-  }
-  if (file.size > 10 * 1024 * 1024) {
-    showToast('Ukuran gambar maksimal 10MB.');
+function processGenericReferenceFile(file) {
+  if (!file) return;
+
+  const fileName = file.name || `clipboard_image_${Date.now()}.png`;
+  const fileType = file.type || '';
+
+  // 1. Image Files
+  if (fileType.startsWith('image/')) {
+    if (file.size > 15 * 1024 * 1024) {
+      showToast('Ukuran gambar maksimal 15MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target.result;
+      const base64Data = dataUrl.split(',')[1];
+      state.project.imageReference = {
+        name: fileName,
+        size: file.size,
+        mimeType: fileType || 'image/png',
+        dataUrl: dataUrl,
+        data: base64Data,
+        type: 'image'
+      };
+      saveCurrentProject();
+      renderImageRefUI();
+      renderAnchorBannerUI();
+      showToast(`📸 Foto referensi visual "${fileName}" berhasil dimuat!`);
+    };
+    reader.readAsDataURL(file);
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    const dataUrl = event.target.result;
-    const base64Data = dataUrl.split(',')[1];
-    state.project.imageReference = {
-      name: file.name,
-      size: file.size,
-      mimeType: file.type,
-      dataUrl: dataUrl,
-      data: base64Data
+  // 2. Video Files (Extract first frame via off-screen video element + canvas)
+  if (fileType.startsWith('video/') || fileName.match(/\.(mp4|webm|mov|mkv)$/i)) {
+    showToast('🎥 Membaca video dan mengekstrak frame acuan visual...');
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.muted = true;
+    video.playsInline = true;
+    const url = URL.createObjectURL(file);
+    video.src = url;
+
+    video.onloadeddata = () => {
+      video.currentTime = Math.min(1.0, (video.duration && video.duration > 2) ? 1.0 : 0.5);
     };
-    saveCurrentProject();
-    renderImageRefUI();
-    showToast('Foto referensi visual berhasil dimuat!');
-  };
-  reader.readAsDataURL(file);
+
+    video.onseeked = () => {
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 720;
+        canvas.height = video.videoHeight || 1280;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        URL.revokeObjectURL(url);
+
+        state.project.imageReference = {
+          name: fileName,
+          size: file.size,
+          mimeType: 'image/jpeg',
+          dataUrl: dataUrl,
+          data: dataUrl.split(',')[1],
+          type: 'video_frame'
+        };
+
+        saveCurrentProject();
+        renderImageRefUI();
+        renderAnchorBannerUI();
+        showToast('🎬 Frame video berhasil dimuat sebagai acuan visual!');
+      } catch (err) {
+        console.error(err);
+        showToast('Gagal mengekstrak frame dari video.');
+      }
+    };
+
+    video.onerror = () => {
+      showToast('Gagal memutar video lokal ini. Format browser didukung: MP4, WebM.');
+    };
+    return;
+  }
+
+  // 3. Text Files (.txt, .md, .json, .csv)
+  if (fileType.includes('text') || fileName.match(/\.(txt|md|json|csv|rtf)$/i)) {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target.result;
+      els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + text;
+      state.project.sourceInput = els.inputReference.value;
+      saveCurrentProject();
+      showToast(`📄 Konten file "${fileName}" berhasil dimasukkan ke input!`);
+    };
+    reader.readAsText(file);
+    return;
+  }
+
+  // 4. PDF Files
+  if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const buffer = event.target.result;
+      const decoder = new TextDecoder('utf-8');
+      const raw = decoder.decode(buffer);
+      const textMatches = raw.match(/\(([^)]+)\)\s*T[jJ]/g) || [];
+      let extracted = textMatches.map(m => m.replace(/[()]/g, '').replace(/\s*T[jJ]/, '')).join(' ');
+      if (extracted && extracted.trim().length > 20) {
+        els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + extracted;
+        state.project.sourceInput = els.inputReference.value;
+        saveCurrentProject();
+        showToast(`📑 File PDF "${fileName}" berhasil dimuat ke input referensi!`);
+      } else {
+        showToast(`📑 File PDF "${fileName}" dibaca.`);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    return;
+  }
+
+  showToast(`Format file "${fileName}" tidak dikenali. Silakan gunakan Foto, Video, PDF, atau Teks.`);
+}
+
+function processImageFile(file) {
+  processGenericReferenceFile(file);
 }
 
 function removeImageRef() {
   state.project.imageReference = null;
   if (els.inputImageRef) els.inputImageRef.value = '';
+  if (els.inputReference && els.inputReference.value.startsWith('Video Referensi: "')) {
+    els.inputReference.value = '';
+    state.project.sourceInput = '';
+  }
   saveCurrentProject();
   renderImageRefUI();
-  showToast('Foto referensi dihapus.');
+  renderAnchorBannerUI();
+  showToast('Gambar referensi dihapus.');
 }
 
 // ------------------------------------------
@@ -1660,6 +1871,68 @@ async function callImageGeneration(promptText, aspectRatio = '9:16', referenceIm
   throw new Error('Google Gemini Banana Pro tidak mengembalikan data gambar yang valid.');
 }
 
+// ------------------------------------------
+// SEQUENTIAL CHAINING & SCENE IMAGE GENERATION
+// ------------------------------------------
+
+function getSceneReference(sceneNum) {
+  const isSequential = state.project.sequentialChaining !== false;
+  const scenes = state.project.scenes || [];
+  
+  // Tab 3 Active Asset Reference (or Tab 1 image fallback)
+  const assetAnchor = (state.project.assetSheet?.isAnchorActive !== false && state.project.assetSheet?.imageData)
+    ? state.project.assetSheet.imageData
+    : (state.project.imageReference?.dataUrl || null);
+  const assetTitle = state.project.assetSheet?.title || 'Asset Anchor Sheet';
+
+  // SCENE 1: Always anchors from Asset Sheet (or Tab 1 reference image)
+  if (!isSequential || sceneNum === 1) {
+    return {
+      image: assetAnchor,
+      label: assetAnchor ? (state.project.assetSheet?.imageData ? `Asset Sheet (${assetTitle})` : 'Foto Referensi Fase 01') : 'Mandiri (Tanpa Reference)',
+      isLoop: false,
+      sourceType: 'asset'
+    };
+  }
+
+  // SCENES 2, 3, 4, 5: Reference the immediate previous Scene (Scene N-1)
+  if (sceneNum >= 2 && sceneNum <= 5) {
+    const prevScene = scenes.find(s => s.number === sceneNum - 1);
+    if (prevScene && prevScene.imageUrl) {
+      return {
+        image: prevScene.imageUrl,
+        label: `Master Frame Scene 0${sceneNum - 1} (Sequential Chain)`,
+        isLoop: false,
+        sourceType: 'previous_scene'
+      };
+    }
+    // Fallback if previous scene has not been generated yet
+    return {
+      image: assetAnchor,
+      label: assetAnchor ? `${assetTitle} (Standby Scene 0${sceneNum - 1})` : 'Mandiri (Tanpa Reference)',
+      isLoop: false,
+      sourceType: 'fallback_asset'
+    };
+  }
+
+  // SCENE 6 (ENDING / LOOP): References Scene 5 AND transitions seamlessly back to Scene 1
+  if (sceneNum === 6) {
+    const scene5 = scenes.find(s => s.number === 5);
+    const scene1 = scenes.find(s => s.number === 1);
+    const prevImage = scene5?.imageUrl || assetAnchor;
+
+    return {
+      image: prevImage,
+      label: scene5?.imageUrl ? `Scene 05 ➔ Loop Match ke Scene 01` : `${assetTitle} ➔ Loop Match ke Scene 01`,
+      isLoop: true,
+      sourceType: 'loop_chain',
+      loopTargetImage: scene1?.imageUrl || null
+    };
+  }
+
+  return { image: assetAnchor, label: assetTitle, isLoop: false, sourceType: 'asset' };
+}
+
 async function generateSceneImage(sceneNum) {
   const scene = state.project.scenes.find(s => s.number === sceneNum);
   if (!scene) return;
@@ -1673,15 +1946,7 @@ async function generateSceneImage(sceneNum) {
     btnGen.innerHTML = `<span class="animate-spin inline-block mr-1">⏳</span> Generating...`;
   }
 
-  let activeRef = null;
-  let anchorName = '';
-  if (state.project.assetSheet?.isAnchorActive && state.project.assetSheet?.imageData) {
-    activeRef = state.project.assetSheet.imageData;
-    anchorName = state.project.assetSheet.title || 'Asset Anchor Sheet';
-  } else if (state.project.imageReference?.dataUrl || state.project.imageReference?.data) {
-    activeRef = state.project.imageReference.dataUrl || state.project.imageReference.data;
-    anchorName = 'Foto Referensi Fase 01';
-  }
+  const refInfo = getSceneReference(sceneNum);
 
   if (canvasEl) {
     canvasEl.innerHTML = `
@@ -1689,22 +1954,64 @@ async function generateSceneImage(sceneNum) {
         <div class="w-10 h-10 rounded-full border-2 border-amber-400 border-t-transparent animate-spin"></div>
         <div class="text-xs font-bold text-amber-300">Google Gemini Banana Pro Rendering...</div>
         <div class="text-[10px] text-slate-400 font-mono">gemini-3.1-flash-image • 9:16 Vertical</div>
-        ${activeRef ? `<div class="text-[10px] text-purple-300 font-semibold px-2 py-0.5 rounded bg-purple-500/20 border border-purple-500/30">🔒 Terkunci Anchor: ${anchorName}</div>` : ''}
+        ${refInfo.image ? `
+          <div class="text-[10px] text-amber-300 font-semibold px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 flex items-center gap-1">
+            <span>🔗 Acuan: ${refInfo.label}</span>
+          </div>
+        ` : ''}
       </div>
     `;
   }
 
+  // Build dynamic prompt with sequential chaining and loop rules
+  let dynamicPrompt = scene.masterFramePrompt;
+  if (state.project.sequentialChaining !== false) {
+    if (sceneNum > 1 && sceneNum < 6) {
+      dynamicPrompt += ` Maintain exact subject identity, wardrobe, materials, and lighting continuity from previous Scene 0${sceneNum - 1}.`;
+    } else if (sceneNum === 6) {
+      dynamicPrompt += ` Seamless loop match cut ending designed to cycle back directly into Scene 01 opening frame with matching color grade, camera direction, and lighting balance.`;
+    }
+  }
+
   try {
-    const imgUrl = await callImageGeneration(scene.masterFramePrompt, '9:16', activeRef);
+    const imgUrl = await callImageGeneration(dynamicPrompt, '9:16', refInfo.image);
+
+    // Save into Scene History Bank (v1, v2, v3...) for instant rollback
+    if (!scene.history) scene.history = [];
+    const verNum = scene.history.length + 1;
+    const newVersion = {
+      id: `s${sceneNum}_v${verNum}_${Date.now()}`,
+      version: verNum,
+      url: imgUrl,
+      timestamp: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+      prompt: dynamicPrompt,
+      refLabel: refInfo.label
+    };
+    scene.history.push(newVersion);
+    scene.currentVersionId = newVersion.id;
     scene.imageUrl = imgUrl;
+
     saveCurrentProject();
     renderScenesUI();
-    showToast(`Master Frame Scene 0${sceneNum} selesai!`);
+    showToast(`Master Frame Scene 0${sceneNum} (Versi ${verNum}) selesai!`);
   } catch (err) {
     console.error(err);
     showToast(`Gagal render Scene 0${sceneNum}: ${err.message}`);
     renderScenesUI();
   }
+}
+
+function rollbackSceneVersion(sceneNum, historyId) {
+  const scene = state.project.scenes.find(s => s.number === sceneNum);
+  if (!scene || !scene.history) return;
+  const item = scene.history.find(h => h.id === historyId);
+  if (!item) return;
+
+  scene.imageUrl = item.url;
+  scene.currentVersionId = item.id;
+  saveCurrentProject();
+  renderScenesUI();
+  showToast(`Master Frame Scene 0${sceneNum} di-rollback ke Versi ${item.version}!`);
 }
 
 async function handleGenerateAllMasterFrames() {
@@ -1715,14 +2022,15 @@ async function handleGenerateAllMasterFrames() {
   }
 
   els.btnGenerateAllImages.disabled = true;
-  els.btnGenerateAllImages.innerHTML = `<span class="animate-spin inline-block mr-1.5">⏳</span> Rendering 6 Frame (Banana Pro)...`;
+  els.btnGenerateAllImages.innerHTML = `<span class="animate-spin inline-block mr-1.5">⏳</span> Rendering Rantai 6 Frame (Banana Pro)...`;
 
   try {
+    // Generate sequentially so Scene 1 feeds into Scene 2, Scene 2 into Scene 3, etc.
     for (const scene of scenes) {
-      showToast(`Merender Master Frame 0${scene.number} dengan Gemini Banana Pro...`);
+      showToast(`Merender Master Frame 0${scene.number} (Sequential Chaining)...`);
       await generateSceneImage(scene.number);
     }
-    showToast('Semua 6 Master Frame selesai di-render!');
+    showToast('Semua 6 Master Frame berurutan selesai di-render!');
   } catch (err) {
     console.error(err);
     showToast(`Error: ${err.message}`);
@@ -1788,12 +2096,131 @@ function handleCustomAssetUpload(e) {
     }
     state.project.assetSheet.imageData = dataUrl;
     state.project.assetSheet.isAnchorActive = true;
+
+    // Push into version history
+    if (!state.project.assetSheet.history) state.project.assetSheet.history = [];
+    const verNum = state.project.assetSheet.history.length + 1;
+    const newVer = {
+      id: `as_v${verNum}_${Date.now()}`,
+      version: verNum,
+      imageData: dataUrl,
+      createdAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
+      prompt: 'Custom Upload',
+      type: state.project.assetSheet.type || 'character'
+    };
+    state.project.assetSheet.history.push(newVer);
+    state.project.assetSheet.currentVersionId = newVer.id;
+
+    // Save to Bank Asset & Galeri Referensi
+    if (!state.project.assetLibrary) state.project.assetLibrary = [];
+    state.project.assetLibrary.forEach(a => a.isPrimary = false);
+    state.project.assetLibrary.unshift({
+      id: newVer.id,
+      title: `${file.name} (Upload)`,
+      type: state.project.assetSheet.type || 'character',
+      imageData: dataUrl,
+      createdAt: newVer.createdAt,
+      prompt: 'Custom Upload',
+      isPrimary: true
+    });
+
     saveCurrentProject();
     renderAssetSheetUI();
     renderAnchorBannerUI();
-    showToast('Gambar custom berhasil diunggah sebagai Visual Anchor!');
+    showToast('Gambar custom berhasil diunggah & disimpan di Bank Asset sebagai Visual Anchor!');
   };
   reader.readAsDataURL(file);
+}
+
+function handleAssetLibraryUpload(e) {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    showToast('Harap pilih file gambar (.jpg, .png, .webp)!');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const dataUrl = event.target.result;
+    const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    const assetId = `lib_${Date.now()}`;
+
+    if (!state.project.assetLibrary) state.project.assetLibrary = [];
+    state.project.assetLibrary.forEach(a => a.isPrimary = false);
+
+    const newAsset = {
+      id: assetId,
+      title: file.name.replace(/\.[^/.]+$/, ""),
+      type: 'character',
+      imageData: dataUrl,
+      createdAt: timeStr,
+      prompt: 'Direct Bank Upload',
+      isPrimary: true
+    };
+    state.project.assetLibrary.unshift(newAsset);
+
+    // Set as active anchor immediately
+    if (!state.project.assetSheet) {
+      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+    }
+    state.project.assetSheet.imageData = dataUrl;
+    state.project.assetSheet.title = newAsset.title;
+    state.project.assetSheet.isAnchorActive = true;
+    state.project.assetSheet.currentVersionId = assetId;
+
+    saveCurrentProject();
+    renderAssetSheetUI();
+    renderAnchorBannerUI();
+    showToast(`Asset "${newAsset.title}" ditambahkan ke Bank & aktif sebagai acuan 6 scene!`);
+  };
+  reader.readAsDataURL(file);
+}
+
+function selectActiveLibraryAsset(assetId) {
+  const asset = (state.project.assetLibrary || []).find(a => a.id === assetId);
+  if (!asset) return;
+
+  state.project.assetLibrary.forEach(a => a.isPrimary = (a.id === assetId));
+
+  if (!state.project.assetSheet) {
+    state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+  }
+  state.project.assetSheet.imageData = asset.imageData;
+  state.project.assetSheet.title = asset.title;
+  state.project.assetSheet.type = asset.type;
+  state.project.assetSheet.isAnchorActive = true;
+  state.project.assetSheet.currentVersionId = asset.id;
+
+  saveCurrentProject();
+  renderAssetSheetUI();
+  renderAnchorBannerUI();
+  showToast(`★ Asset "${asset.title}" sekarang aktif sebagai acuan visual utama 6 scene!`);
+}
+
+function deleteLibraryAsset(assetId) {
+  state.project.assetLibrary = (state.project.assetLibrary || []).filter(a => a.id !== assetId);
+  saveCurrentProject();
+  renderAssetLibraryUI();
+  showToast('Asset dihapus dari Bank Referensi.');
+}
+
+function rollbackAssetVersion(versionId) {
+  const history = state.project.assetSheet?.history || [];
+  const ver = history.find(h => h.id === versionId);
+  if (!ver) return;
+
+  state.project.assetSheet.imageData = ver.imageData;
+  state.project.assetSheet.currentVersionId = ver.id;
+  state.project.assetSheet.isAnchorActive = true;
+
+  if (state.project.assetLibrary) {
+    state.project.assetLibrary.forEach(a => a.isPrimary = (a.id === ver.id));
+  }
+
+  saveCurrentProject();
+  renderAssetSheetUI();
+  renderAnchorBannerUI();
+  showToast(`Asset Sheet di-rollback ke Versi ${ver.version}!`);
 }
 
 async function handleGenerateAssetSheet() {
@@ -1829,10 +2256,39 @@ async function handleGenerateAssetSheet() {
     }
     state.project.assetSheet.imageData = imgUrl;
     state.project.assetSheet.isAnchorActive = true;
+
+    // Push into version history
+    if (!state.project.assetSheet.history) state.project.assetSheet.history = [];
+    const verNum = state.project.assetSheet.history.length + 1;
+    const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    const newVer = {
+      id: `as_v${verNum}_${Date.now()}`,
+      version: verNum,
+      imageData: imgUrl,
+      createdAt: timeStr,
+      prompt: promptText,
+      type: state.project.assetSheet.type || 'character'
+    };
+    state.project.assetSheet.history.push(newVer);
+    state.project.assetSheet.currentVersionId = newVer.id;
+
+    // Save to Bank Asset & Galeri Referensi
+    if (!state.project.assetLibrary) state.project.assetLibrary = [];
+    state.project.assetLibrary.forEach(a => a.isPrimary = false);
+    state.project.assetLibrary.unshift({
+      id: newVer.id,
+      title: `${state.project.assetSheet.title} (v${verNum})`,
+      type: state.project.assetSheet.type || 'character',
+      imageData: imgUrl,
+      createdAt: timeStr,
+      prompt: promptText,
+      isPrimary: true
+    });
+
     saveCurrentProject();
     renderAssetSheetUI();
     renderAnchorBannerUI();
-    showToast('Asset Sheet berhasil dibuat & dikunci sebagai Visual Anchor!');
+    showToast(`Asset Sheet (v${verNum}) berhasil dibuat & disimpan ke Bank Referensi!`);
   } catch (err) {
     console.error(err);
     showToast(`Gagal render Asset Sheet: ${err.message}`);
@@ -2048,6 +2504,8 @@ function renderAll() {
   renderSourcePackUI();
   renderMasterPackUI();
   renderAssetSheetUI();
+  renderAssetVersionReel();
+  renderAssetLibraryUI();
   renderAnchorBannerUI();
   renderSoundtrackUI();
   renderScenesUI();
@@ -2076,15 +2534,11 @@ function updateSceneBadge() {
 function renderImageRefUI() {
   const imgRef = state.project.imageReference;
   if (imgRef && imgRef.dataUrl) {
-    els.imageDropPrompt.classList.add('hidden');
-    els.imagePreviewContainer.classList.remove('hidden');
-    els.imagePreviewImg.src = imgRef.dataUrl;
-    els.imageInfoText.textContent = `${imgRef.name || 'reference_image.jpg'} (${Math.round((imgRef.size || 0) / 1024)} KB)`;
+    if (els.attachedMediaTray) els.attachedMediaTray.classList.remove('hidden');
+    if (els.imagePreviewImg) els.imagePreviewImg.src = imgRef.dataUrl;
   } else {
-    els.imageDropPrompt.classList.remove('hidden');
-    els.imagePreviewContainer.classList.add('hidden');
-    els.imagePreviewImg.src = '';
-    els.imageInfoText.textContent = '';
+    if (els.attachedMediaTray) els.attachedMediaTray.classList.add('hidden');
+    if (els.imagePreviewImg) els.imagePreviewImg.src = '';
   }
 }
 
@@ -2273,12 +2727,125 @@ function renderAssetSheetUI() {
     }
   }
 
+  renderAssetVersionReel();
+  renderAssetLibraryUI();
+  lucide.createIcons();
+}
+
+function renderAssetVersionReel() {
+  if (!els.assetVersionReel || !els.assetVersionReelContainer) return;
+  const history = state.project.assetSheet?.history || [];
+  if (history.length <= 1) {
+    els.assetVersionReelContainer.classList.add('hidden');
+    return;
+  }
+
+  els.assetVersionReelContainer.classList.remove('hidden');
+  const currentId = state.project.assetSheet.currentVersionId || history[history.length - 1]?.id;
+  if (els.assetVersionCountBadge) {
+    els.assetVersionCountBadge.textContent = `${history.length} Versi Tersimpan`;
+  }
+
+  els.assetVersionReel.innerHTML = history.map(item => {
+    const isSelected = item.id === currentId || item.imageData === state.project.assetSheet.imageData;
+    return `
+      <button type="button" class="btn-rollback-asset shrink-0 relative group p-0.5 rounded-lg border-2 transition ${isSelected ? 'border-purple-400 bg-purple-500/20 shadow-md shadow-purple-500/20 ring-1 ring-purple-400' : 'border-dark-border hover:border-purple-500/60 bg-dark-card'}" data-id="${item.id}" title="Klik untuk rollback ke Versi ${item.version} (${item.createdAt})">
+        <img src="${item.imageData}" class="w-11 h-14 object-cover rounded">
+        <span class="absolute bottom-0.5 right-0.5 text-[8px] font-mono font-bold px-1 rounded ${isSelected ? 'bg-purple-600 text-white' : 'bg-black/80 text-slate-300'}">
+          v${item.version}
+        </span>
+        ${isSelected ? '<span class="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-black"></span>' : ''}
+      </button>
+    `;
+  }).join('');
+
+  els.assetVersionReel.querySelectorAll('.btn-rollback-asset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      rollbackAssetVersion(btn.dataset.id);
+    });
+  });
+}
+
+function renderAssetLibraryUI() {
+  if (!els.assetLibraryGrid) return;
+  const library = state.project.assetLibrary || [];
+
+  if (els.assetLibraryCountBadge) {
+    els.assetLibraryCountBadge.textContent = `${library.length} Tersimpan`;
+  }
+
+  if (library.length === 0) {
+    els.assetLibraryGrid.innerHTML = `
+      <div class="col-span-full p-8 rounded-xl bg-dark-card/50 border border-dashed border-dark-border text-center space-y-2">
+        <div class="w-10 h-10 mx-auto rounded-lg bg-dark-panel border border-dark-border flex items-center justify-center text-slate-500">
+          <i data-lucide="layers" class="w-5 h-5 text-purple-400"></i>
+        </div>
+        <p class="text-xs text-slate-300 font-semibold">Bank Asset Masih Kosong</p>
+        <p class="text-[11px] text-slate-500 max-w-sm mx-auto">Setiap Asset Sheet yang di-generate atau gambar yang Anda upload akan tersimpan di sini. Anda bisa memilih asset mana saja untuk menjadi acuan pembuatan 6 scene.</p>
+      </div>
+    `;
+    lucide.createIcons();
+    return;
+  }
+
+  els.assetLibraryGrid.innerHTML = library.map(item => {
+    const isPrimary = item.isPrimary || (state.project.assetSheet?.imageData === item.imageData);
+    const typeLabel = item.type === 'character' ? '🧍 Karakter' : (item.type === 'object' ? '📦 Objek' : (item.type === 'world' ? '🌌 World' : '🎬 Hero'));
+
+    return `
+      <div class="group relative rounded-xl bg-dark-card border ${isPrimary ? 'border-purple-500 ring-2 ring-purple-500/30 bg-purple-950/15' : 'border-dark-border hover:border-purple-500/40'} p-2.5 space-y-2 transition flex flex-col justify-between shadow-lg">
+        <div class="relative rounded-lg overflow-hidden aspect-short bg-black border border-dark-border/80">
+          <img src="${item.imageData}" alt="${item.title}" class="w-full h-full object-cover">
+          ${isPrimary ? `
+            <div class="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md bg-purple-600 text-[9px] font-black text-white uppercase tracking-wider shadow-md flex items-center gap-1">
+              <i data-lucide="check-circle" class="w-2.5 h-2.5"></i>
+              <span>REFERENCE UTAMA</span>
+            </div>
+          ` : ''}
+          <div class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur-sm text-[9px] font-mono text-purple-300">
+            ${item.createdAt || '9:16'}
+          </div>
+        </div>
+
+        <div class="space-y-1">
+          <div class="flex items-center justify-between gap-1 text-[10px]">
+            <span class="text-slate-400 font-semibold">${typeLabel}</span>
+            <button class="btn-del-lib-asset text-slate-500 hover:text-red-400 p-0.5 transition" data-id="${item.id}" title="Hapus Asset">
+              <i data-lucide="trash-2" class="w-3 h-3"></i>
+            </button>
+          </div>
+          <h5 class="text-xs font-bold text-white truncate" title="${item.title}">${item.title}</h5>
+        </div>
+
+        <button type="button" class="btn-select-lib-asset w-full py-1.5 px-2 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 ${isPrimary ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40 cursor-default' : 'bg-dark-panel hover:bg-purple-600 hover:text-white border border-dark-border text-slate-300'}" data-id="${item.id}">
+          <i data-lucide="${isPrimary ? 'check' : 'check-circle'}" class="w-3 h-3"></i>
+          <span>${isPrimary ? 'Sedang Digunakan' : 'Gunakan Sebagai Acuan'}</span>
+        </button>
+      </div>
+    `;
+  }).join('');
+
+  // Re-bind buttons inside library grid
+  els.assetLibraryGrid.querySelectorAll('.btn-select-lib-asset').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectActiveLibraryAsset(btn.dataset.id);
+    });
+  });
+
+  els.assetLibraryGrid.querySelectorAll('.btn-del-lib-asset').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteLibraryAsset(btn.dataset.id);
+    });
+  });
+
   lucide.createIcons();
 }
 
 function renderAnchorBannerUI() {
   const as = state.project.assetSheet;
   const imgRef = state.project.imageReference;
+  const isSeq = state.project.sequentialChaining !== false;
 
   if (as && as.imageData && as.isAnchorActive !== false) {
     if (els.anchorThumbBox) els.anchorThumbBox.innerHTML = `<img src="${as.imageData}" class="w-full h-full object-cover">`;
@@ -2287,7 +2854,9 @@ function renderAnchorBannerUI() {
       els.anchorBadgeStatus.textContent = `Aktif (${as.title || 'Asset Sheet'})`;
     }
     if (els.anchorDescriptionText) {
-      els.anchorDescriptionText.textContent = `Google Gemini Banana Pro mengunci konsistensi Scene 1-6 dengan acuan visual Asset Sheet ini.`;
+      els.anchorDescriptionText.textContent = isSeq
+        ? `Asset Sheet ini menjadi acuan awal Scene 01, dilanjutkan secara Sequential Chain (Scene 1 ➔ 2 ➔ ... ➔ 6 Loop).`
+        : `Google Gemini Banana Pro mengunci konsistensi Scene 1-6 dengan acuan visual Asset Sheet ini.`;
     }
   } else if (imgRef && (imgRef.dataUrl || imgRef.data)) {
     const src = imgRef.dataUrl || `data:${imgRef.mimeType || 'image/jpeg'};base64,${imgRef.data}`;
@@ -2297,7 +2866,7 @@ function renderAnchorBannerUI() {
       els.anchorBadgeStatus.textContent = 'Aktif (Foto Input Fase 01)';
     }
     if (els.anchorDescriptionText) {
-      els.anchorDescriptionText.textContent = `Menggunakan foto referensi dari Fase 01 sebagai acuan visual scene.`;
+      els.anchorDescriptionText.textContent = `Menggunakan foto/frame referensi dari Fase 01 sebagai acuan visual scene.`;
     }
   } else {
     if (els.anchorThumbBox) els.anchorThumbBox.innerHTML = `<i data-lucide="layers" class="w-5 h-5 text-slate-500"></i>`;
@@ -2407,6 +2976,9 @@ function renderScenesUI() {
   els.scenesList.innerHTML = scenes.map((scene, idx) => {
     const isV2 = !!scene.omniPromptV2;
     const currentOmni = scene.omniPromptV2 || scene.omniPrompt;
+    const refInfo = getSceneReference(scene.number);
+    const history = scene.history || [];
+    const hasHistory = history.length > 0;
 
     return `
       <div id="sceneCard-${scene.number}" class="scene-card p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-5 shadow-xl glass-panel-hover" data-scene-num="${scene.number}">
@@ -2463,20 +3035,31 @@ function renderScenesUI() {
 
           <!-- Left: 9:16 Master Frame Visual Canvas -->
           <div class="lg:col-span-5 p-4 rounded-xl bg-[#090b14] border border-dark-border flex flex-col justify-between space-y-3">
-            <div class="flex items-center justify-between">
-              <span class="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                <i data-lucide="image" class="w-3.5 h-3.5"></i>
-                <span>Master Frame 9:16 (Banana Pro)</span>
-              </span>
-              <div class="flex items-center gap-1.5">
-                ${scene.imageUrl ? `
-                  <button class="btn-fullscreen-scene-img p-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 transition" data-url="${scene.imageUrl}" title="Lihat Penuh">
-                    <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
-                  </button>
-                  <a href="${scene.imageUrl}" download="Scene_0${scene.number}_MasterFrame.png" target="_blank" class="p-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 transition" title="Download">
-                    <i data-lucide="download" class="w-3.5 h-3.5"></i>
-                  </a>
-                ` : ''}
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  <i data-lucide="image" class="w-3.5 h-3.5"></i>
+                  <span>Master Frame 9:16 (Banana Pro)</span>
+                </span>
+                <div class="flex items-center gap-1.5">
+                  ${scene.imageUrl ? `
+                    <button class="btn-fullscreen-scene-img p-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 transition" data-url="${scene.imageUrl}" title="Lihat Penuh">
+                      <i data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
+                    </button>
+                    <a href="${scene.imageUrl}" download="Scene_0${scene.number}_MasterFrame.png" target="_blank" class="p-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 transition" title="Download">
+                      <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                    </a>
+                  ` : ''}
+                </div>
+              </div>
+
+              <!-- Active Reference Indicator Banner for Sequential Chaining -->
+              <div class="px-2.5 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[10px] text-amber-300 font-medium flex items-center justify-between gap-1">
+                <span class="flex items-center gap-1.5 truncate">
+                  <i data-lucide="${refInfo.isLoop ? 'repeat' : 'link-2'}" class="w-3.5 h-3.5 text-amber-400 shrink-0"></i>
+                  <span class="truncate">Acuan: <strong>${refInfo.label}</strong></span>
+                </span>
+                ${refInfo.isLoop ? '<span class="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold uppercase shrink-0">Loop Cut</span>' : ''}
               </div>
             </div>
 
@@ -2497,6 +3080,31 @@ function renderScenesUI() {
                 </div>
               `}
             </div>
+
+            <!-- Image Version Bank & Rollback Gallery -->
+            ${hasHistory ? `
+              <div class="space-y-1.5 pt-1.5 border-t border-dark-border/60">
+                <div class="flex items-center justify-between text-[10px]">
+                  <span class="text-slate-400 font-semibold flex items-center gap-1">
+                    <i data-lucide="history" class="w-3 h-3 text-amber-400"></i>
+                    <span>Riwayat Versi (Klik Rollback):</span>
+                  </span>
+                  <span class="font-mono text-amber-400 font-bold">${history.length} Versi Tersimpan</span>
+                </div>
+                <div class="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+                  ${history.map(h => {
+                    const isActive = h.url === scene.imageUrl;
+                    return `
+                      <button type="button" class="btn-rollback-scene shrink-0 relative group p-0.5 rounded-lg border-2 transition ${isActive ? 'border-amber-400 bg-amber-500/20 shadow-md shadow-amber-500/20 ring-1 ring-amber-400' : 'border-dark-border hover:border-amber-500/60 bg-dark-card'}" data-scene="${scene.number}" data-id="${h.id}" title="Rollback ke Versi ${h.version} (${h.timestamp})">
+                        <img src="${h.url}" class="w-9 h-12 object-cover rounded">
+                        <span class="absolute bottom-0.5 right-0.5 text-[8px] font-mono font-bold px-1 rounded ${isActive ? 'bg-amber-500 text-black' : 'bg-black/75 text-slate-300'}">v${h.version}</span>
+                        ${isActive ? '<span class="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-emerald-400 ring-2 ring-black"></span>' : ''}
+                      </button>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            ` : ''}
 
             <!-- Action Button -->
             <button class="btn-gen-scene-img w-full py-2.5 rounded-xl ${scene.imageUrl ? 'bg-dark-card hover:bg-dark-hover text-slate-300 border border-dark-border' : 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-extrabold shadow-lg shadow-amber-500/20'} text-xs font-bold transition flex items-center justify-center gap-1.5" data-scene="${scene.number}">
@@ -2614,6 +3222,14 @@ function renderScenesUI() {
   document.querySelectorAll('.btn-open-modal-trigger').forEach(b => {
     b.addEventListener('click', () => {
       openImageModal(b.dataset.url);
+    });
+  });
+
+  document.querySelectorAll('.btn-rollback-scene').forEach(b => {
+    b.addEventListener('click', () => {
+      const sceneNum = parseInt(b.dataset.scene, 10);
+      const historyId = b.dataset.id;
+      rollbackSceneVersion(sceneNum, historyId);
     });
   });
 

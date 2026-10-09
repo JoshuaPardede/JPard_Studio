@@ -181,42 +181,55 @@
         <div class="lg:col-span-5 space-y-5">
           <div class="p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-4 shadow-xl">
             
-            <div>
-              <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between">
-                <span>Reference Input (Teks / Link / Transkrip / Ide)</span>
-                <span class="text-[10px] text-slate-400 normal-case font-normal">Bisa acak apa saja</span>
+            <!-- Unified Smart Reference Ingest Hub (Drag & Drop + Paste Cmd+V) -->
+            <div id="referenceHub" class="space-y-3">
+              <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                <span>Universal Reference Hub</span>
+                <span class="text-[10px] text-orange-400 font-semibold px-2 py-0.5 rounded bg-orange-500/10 border border-orange-500/20">Drop File / Paste (Cmd+V)</span>
               </label>
-              <textarea id="inputReference" rows="5" class="w-full bg-[#0a0c14] border border-dark-border focus:border-orange-500 rounded-xl p-3.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none transition resize-none font-sans" placeholder="Contoh:
-- Video dokumenter tentang bagaimana koloni semut membangun sarang bawah tanah raksasa yang rumit seperti kota manusia.
-- Atau link YouTube / TikTok / transkrip video.
-- Atau ide 1 kalimat: 'Astronaut menemukan struktur kubus raksasa menyala di planet merah.'"></textarea>
-            </div>
 
-            <!-- Image Reference Upload Box (Multimodal) -->
-            <div>
-              <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center justify-between">
-                <span>Foto / Gambar Referensi (Opsional)</span>
-                <span class="text-[10px] text-orange-400 font-semibold px-2 py-0.5 rounded bg-orange-500/10 border border-orange-500/20">Gemini Vision AI</span>
-              </label>
-              
-              <div id="imageDropzone" class="border-2 border-dashed border-dark-border hover:border-orange-500/60 rounded-xl p-3.5 text-center cursor-pointer transition bg-[#0a0c14]/60 group">
-                <input id="inputImageRef" type="file" accept="image/png,image/jpeg,image/webp" class="hidden">
+              <!-- Main Interactive Container with Drop & Paste -->
+              <div id="smartDropContainer" class="relative rounded-2xl border-2 border-dashed border-dark-border hover:border-orange-500/70 transition bg-[#0a0c14] p-4 group">
                 
-                <div id="imageDropPrompt" class="space-y-1.5 py-1">
-                  <div class="w-9 h-9 mx-auto rounded-lg bg-dark-card border border-dark-border flex items-center justify-center text-slate-400 group-hover:text-orange-400 transition">
-                    <i data-lucide="image-plus" class="w-5 h-5"></i>
+                <!-- Textarea for text/link/ideas/transcript -->
+                <textarea id="inputReference" rows="4" class="w-full bg-transparent border-0 focus:ring-0 p-0 text-sm text-slate-200 placeholder-slate-500 focus:outline-none transition resize-none font-sans" placeholder="Ketik atau paste teks/link/ide di sini...
+💡 Bisa langsung tarik (drag &amp; drop) foto, video, PDF, file teks, atau tekan Cmd+V / Ctrl+V untuk menempel gambar dari clipboard!"></textarea>
+
+                <!-- Attached Media Preview (Simple Thumbnail Only) -->
+                <div id="attachedMediaTray" class="hidden mt-3 pt-2.5 border-t border-dark-border/60 flex items-center">
+                  <div class="relative group/thumb shrink-0">
+                    <img id="imagePreviewImg" src="" alt="Thumbnail Referensi" class="w-16 h-16 object-cover rounded-xl border border-dark-border shadow-md">
+                    <button id="btnRemoveImage" type="button" class="absolute -top-1.5 -right-1.5 p-1 rounded-full bg-red-600 hover:bg-red-500 text-white shadow-lg transition" title="Hapus Lampiran">
+                      <i data-lucide="x" class="w-3 h-3"></i>
+                    </button>
                   </div>
-                  <p class="text-xs text-slate-300 font-semibold">Tarik foto referensi ke sini atau <span class="text-orange-400 underline decoration-orange-400/50">klik untuk memilih</span></p>
-                  <p class="text-[10px] text-slate-500">Membantu AI mengenali produk, model/karakter, atau setting visual Anda (.jpg, .png)</p>
                 </div>
 
-                <!-- Preview Thumbnail (Hidden initially) -->
-                <div id="imagePreviewContainer" class="hidden relative inline-block max-w-full">
-                  <img id="imagePreviewImg" src="" alt="Reference Preview" class="max-h-36 rounded-lg object-contain border border-dark-border mx-auto shadow-md">
-                  <button id="btnRemoveImage" type="button" class="absolute -top-2 -right-2 p-1 rounded-full bg-red-600 text-white hover:bg-red-500 shadow-lg transition" title="Hapus Gambar">
-                    <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                  </button>
-                  <div id="imageInfoText" class="text-[10px] text-slate-400 mt-1 truncate max-w-xs mx-auto"></div>
+                <!-- Dropzone Action Bar / Helper -->
+                <div class="mt-3 pt-2.5 border-t border-dark-border/40 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <div class="flex items-center gap-2 text-slate-400 text-[11px]">
+                    <i data-lucide="paperclip" class="w-3.5 h-3.5 text-orange-400"></i>
+                    <span>Tarik file (Foto/Video/PDF/Teks) atau tekan <kbd class="px-1.5 py-0.5 rounded bg-dark-card border border-dark-border font-mono text-[10px] text-slate-300">Cmd+V</kbd></span>
+                  </div>
+
+                  <div class="flex items-center gap-1.5">
+                    <input id="inputImageRef" type="file" accept="image/*,video/*,.pdf,.txt,.md,.json" class="hidden">
+                    <button type="button" id="btnBrowseReferenceFile" class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-slate-300 hover:text-white transition flex items-center gap-1">
+                      <i data-lucide="upload" class="w-3 h-3 text-orange-400"></i>
+                      <span>Pilih File</span>
+                    </button>
+                    <button type="button" id="btnPasteFromClipboard" class="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 text-orange-300 transition flex items-center gap-1">
+                      <i data-lucide="clipboard" class="w-3 h-3"></i>
+                      <span>Paste Clipboard</span>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Drag Overlay (Visible on dragover) -->
+                <div id="dragOverlay" class="absolute inset-0 bg-orange-950/90 backdrop-blur-sm rounded-2xl border-2 border-orange-500 flex flex-col items-center justify-center pointer-events-none hidden z-10 space-y-1 transition">
+                  <i data-lucide="download-cloud" class="w-8 h-8 text-orange-400 animate-bounce"></i>
+                  <span class="text-xs font-bold text-white">Lepaskan File di Sini</span>
+                  <span class="text-[10px] text-orange-200">Foto, Video, PDF, atau Teks langsung diproses</span>
                 </div>
               </div>
             </div>
@@ -475,6 +488,20 @@
             <img id="assetCanvasImg" src="" alt="Asset Anchor Sheet" class="hidden w-full h-full object-cover">
           </div>
 
+          <!-- Asset Version History Reel / Rollback Gallery -->
+          <div id="assetVersionReelContainer" class="hidden space-y-1.5 pt-1">
+            <div class="flex items-center justify-between text-[11px]">
+              <span class="font-bold text-slate-300 flex items-center gap-1">
+                <i data-lucide="history" class="w-3 h-3 text-purple-400"></i>
+                <span>Riwayat Versi Asset (Klik Rollback):</span>
+              </span>
+              <span id="assetVersionCountBadge" class="text-[10px] font-mono text-purple-400">v1 Aktif</span>
+            </div>
+            <div id="assetVersionReel" class="flex items-center gap-2 overflow-x-auto pb-1.5 no-scrollbar">
+              <!-- Dynamically populated thumbnails -->
+            </div>
+          </div>
+
           <!-- Anchor Status Box -->
           <div id="assetStatusBox" class="p-3 rounded-xl bg-[#080a12] border border-dark-border text-xs flex items-center justify-between">
             <span class="text-slate-400">Status Visual Anchor:</span>
@@ -547,6 +574,32 @@
 
         </div>
 
+      </div>
+
+      <!-- Bank Asset & Galeri Referensi Section -->
+      <div id="assetLibrarySection" class="p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-4 shadow-xl">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-dark-border pb-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
+              <h3 class="text-base font-extrabold text-white">Bank Asset &amp; Galeri Referensi</h3>
+              <span id="assetLibraryCountBadge" class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">0 Tersimpan</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-0.5">Pilih asset manapun dari bank ini untuk dijadikan <strong>Active Reference Utama</strong> saat me-render 6 Master Frame.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="inputAssetLibraryUpload" type="file" accept="image/*" class="hidden">
+            <button type="button" id="btnUploadToAssetLibrary" class="px-3.5 py-2 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border text-xs font-bold text-slate-300 hover:text-white transition flex items-center gap-1.5">
+              <i data-lucide="plus-circle" class="w-3.5 h-3.5 text-purple-400"></i>
+              <span>Tambah Asset ke Bank</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Asset Grid Container -->
+        <div id="assetLibraryGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3.5">
+          <!-- Dynamically populated cards -->
+        </div>
       </div>
 
     </section>
@@ -627,7 +680,15 @@
           <span class="text-[11px] text-slate-400 hidden sm:inline">• Native 9:16 Vertical Master Frame</span>
         </div>
 
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-3 flex-wrap">
+          <label class="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-200 bg-dark-card px-3 py-1.5 rounded-xl border border-dark-border hover:border-amber-500/40 transition">
+            <input type="checkbox" id="chkSequentialChaining" checked class="rounded border-dark-border text-amber-500 focus:ring-0">
+            <span class="flex items-center gap-1.5">
+              <i data-lucide="link-2" class="w-3.5 h-3.5 text-amber-400"></i>
+              <span>Sequential Chaining (Scene 1 ➔ 2 ➔ ... ➔ 6 Loop)</span>
+            </span>
+          </label>
+
           <button id="btnGenerateAllImages" class="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-extrabold text-xs flex items-center gap-1.5 shadow-lg shadow-amber-500/20 transition">
             <i data-lucide="sparkles" class="w-4 h-4"></i>
             <span>Generate Semua 6 Master Frame (Banana Pro)</span>
