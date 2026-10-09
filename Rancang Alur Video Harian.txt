@@ -1,0 +1,588 @@
+Saya sudah pelajari isi folder **Short Video - Project**, khususnya tiga source prompt di folder **Prompt**. Polanya cukup jelas, dan menurut saya proyek ini bisa dibuat jauh lebih sederhana daripada flow 8 langkah yang sekarang.
+
+Dari source Anda, ada tiga prinsip yang paling bernilai. Pertama, **reference sheet dipakai sebagai source of truth** untuk menjaga karakter, produk, lokasi, wardrobe, dan color grading. Kedua, prompt video selalu punya struktur **reference → performance/action → shot timing → camera → visual lock → negative constraints**. Ketiga, Anda sudah memakai pendekatan modular seperti `/MacroShot`, `/PushIn`, `/GoldenHour`, `/Cinematic`, pose code, dan sebagainya. Jadi kode-kode itu sebaiknya bukan workflow terpisah, tetapi menjadi **library parameter** yang dipilih otomatis oleh GPT berdasarkan storyboard.
+
+Untuk Gemini Omni Flash 1.1, pendekatan Anda juga masih relevan. Saat ini Flow mendukung **10 detik per generation**, Ingredients/References, first/last frame, serta video editing hingga 10 detik. Google juga secara eksplisit menyarankan penggunaan reference/ingredients yang bersih dan konsisten antar-klip. ([support.google.com](https://support.google.com/flow/answer/16352836?hl=en&utm_source=chatgpt.com))
+
+### Flow baru yang saya sarankan
+
+Saya justru akan mengubah 8 langkah Anda menjadi **4 fase tetap**:
+
+**SOURCE → DIRECTOR → GENERATE → ASSEMBLE**
+
+Tujuannya: setiap hari Anda hanya membuat **satu keputusan kreatif**, yaitu memilih referensi/video awal. Setelah itu GPT yang mengambil keputusan teknis.
+
+| Fase | Yang Anda lakukan | Yang AI lakukan | Target waktu |
+|---|---|---|---:|
+| 1. SOURCE | pilih/drop 1 video random | transkrip + analisis isi | 10–20 mnt |
+| 2. DIRECTOR | beri tema/style | buat konsep 60 detik + storyboard final | 10–15 mnt |
+| 3. GENERATE | generate aset & video | prompt image + prompt Omni otomatis | 60–100 mnt |
+| 4. ASSEMBLE | pilih hasil terbaik | susun 6 klip + audio/caption | 20–30 mnt |
+
+Target realistisnya sekitar **1 jam 40 menit–2 jam 45 menit**, termasuk beberapa regenerate.
+
+---
+
+## 1. SOURCE — jangan mulai dari “mau bikin video apa?”
+
+Ini justru bagian yang paling berpotensi membuang waktu.
+
+Flow harian sebaiknya:
+
+**Ambil 1 reference → serahkan ke AI → AI menentukan apa yang layak diambil darinya.**
+
+Reference boleh sangat random:
+
+- video dokumenter,
+- TikTok,
+- iklan,
+- anime,
+- film,
+- video sejarah,
+- tutorial,
+- cinematic footage,
+- interview,
+- meme,
+- science video,
+- dan sebagainya.
+
+Tetapi AI jangan diminta hanya:
+
+> “Transkrip video ini.”
+
+Suruh dia menghasilkan **SOURCE PACK**.
+
+SOURCE PACK harus berisi:
+
+```text id="jqb86o"
+SUBJECT
+Apa objek/kejadian utama video.
+
+CORE IDEA
+Satu kalimat tentang inti video.
+
+MOST VISUAL MOMENTS
+5–10 momen yang paling kuat secara visual.
+
+STORY ELEMENTS
+Karakter
+Objek
+Lokasi
+Aksi
+Konflik
+Transformation/payoff
+
+FACTS / INFORMATION
+Informasi penting dari reference.
+
+VISUAL DNA
+Lighting
+Camera
+Composition
+Color
+Atmosphere
+Texture
+Movement
+
+REUSABLE IDEAS
+Elemen apa yang bisa diadaptasi tanpa harus menjiplak video sumber.
+
+DO NOT NEED
+Informasi yang tidak penting untuk video 60 detik.
+```
+
+Ini penting karena transcript mentah biasanya terlalu panjang.
+
+GPT sebenarnya tidak membutuhkan seluruh transcript untuk membuat video.
+
+Yang dibutuhkan adalah **visual information compression**.
+
+---
+
+# 2. DIRECTOR — satu prompt menghasilkan seluruh produksi
+
+Setelah SOURCE PACK selesai, Anda cukup memberi misalnya:
+
+> Theme: dark sci-fi documentary
+
+atau:
+
+> Tema: iklan luxury Jepang
+
+atau:
+
+> Buat seperti cinematic National Geographic
+
+atau bahkan:
+
+> bebas, bikin yang paling menarik.
+
+Dari situ GPT harus langsung mengeluarkan **MASTER PRODUCTION PACK**.
+
+Bukan sekadar storyboard.
+
+Formatnya:
+
+```text id="q4len7"
+VIDEO
+Duration: ~60s
+Format: 9:16
+Scenes: 6
+Duration per scene: 10s
+
+CREATIVE DIRECTION
+...
+
+STORY ARC
+Hook
+Build
+Escalation
+Payoff
+Ending
+
+GLOBAL VISUAL LOCK
+Style
+Color palette
+Lighting
+Lens character
+Film texture
+World rules
+
+CHARACTER LOCK
+...
+
+LOCATION LOCK
+...
+
+OBJECT LOCK
+...
+
+SCENE 01
+Purpose:
+Visual:
+Action:
+Composition:
+Camera:
+Start frame:
+End frame:
+Transition logic:
+Voiceover:
+SFX:
+Image prompt:
+Omni 1.1 prompt:
+
+SCENE 02
+...
+```
+
+Dan seterusnya sampai Scene 06.
+
+Dengan begitu **step 3, 5, dan sebagian step 6 Anda digabung**.
+
+Tidak perlu bolak-balik:
+
+storyboard → GPT → image → GPT → prompt → Flow.
+
+GPT sudah menghasilkan semuanya sejak awal.
+
+---
+
+# 3. Ubah konsep storyboard Anda
+
+Saat ini Anda membayangkan:
+
+**gambar storyboard → generate video → ulangi.**
+
+Saya menyarankan sedikit perubahan:
+
+### Jangan membuat “storyboard image”.
+
+Buat:
+
+# MASTER FRAME
+
+Artinya gambar tersebut memang sengaja dibuat untuk menjadi **input video generation**, bukan sekadar visual storyboard.
+
+Ada perbedaan besar.
+
+Storyboard biasa:
+
+> seorang pria berdiri di hutan.
+
+Master Frame:
+
+> karakter yang sudah terkunci identitasnya, wardrobe yang benar, posisi tubuh, foreground, background, lens, depth-of-field, lighting, arah pandang, negative space dan titik awal motion yang sudah dipikirkan untuk menghasilkan video.
+
+Jadi image tersebut harus dibuat dengan asumsi:
+
+> **“Ini adalah frame 0 dari video berikutnya.”**
+
+Bukan:
+
+> “Ini gambar representasi scene.”
+
+Ini akan mengurangi regenerate cukup banyak.
+
+---
+
+# 4. Gunakan hanya 6 scene
+
+Karena Omni Flash 1.1 saat ini mendukung video sampai **10 detik**, Anda punya struktur paling sederhana:
+
+**6 × 10 detik ≈ 60 detik.** ([support.google.com](https://support.google.com/flow/answer/16352836?hl=id&utm_source=chatgpt.com))
+
+Jangan membuat 10–15 scene kecuali memang diperlukan.
+
+Gunakan struktur permanen seperti ini:
+
+| Scene | Fungsi |
+|---|---|
+| 01 | HOOK |
+| 02 | DISCOVERY |
+| 03 | ESCALATION |
+| 04 | REVEAL |
+| 05 | PAYOFF |
+| 06 | ENDING / LOOP |
+
+Topiknya boleh berubah total.
+
+Tetapi struktur produksi jangan berubah.
+
+Hari ini dinosaurus.
+
+Besok parfum.
+
+Lusa sejarah Roma.
+
+Besoknya cyberpunk cat.
+
+Pipeline-nya tetap:
+
+**HOOK → DISCOVERY → ESCALATION → REVEAL → PAYOFF → END**
+
+Inilah bagian “tidak perlu mikir”-nya.
+
+---
+
+# Yang paling penting dari source prompt Drive Anda
+
+Dokumen iklan produk Anda menggunakan:
+
+> product sheet  
+> model sheet  
+> location sheet
+
+Itu sangat bagus untuk commercial production.
+
+Tetapi kalau dipakai setiap hari untuk video random, saya rasa terlalu berat.
+
+Anda tidak perlu membuat tiga sheet untuk semuanya.
+
+Gunakan aturan otomatis:
+
+### LEVEL A — Simple
+
+Tidak ada recurring character.
+
+Contoh:
+
+- meteor,
+- kota,
+- sejarah,
+- mesin,
+- nature.
+
+Gunakan:
+
+**STYLE SHEET saja.**
+
+### LEVEL B — Character
+
+Ada manusia/hewan recurring.
+
+Gunakan:
+
+**CHARACTER SHEET + STYLE SHEET.**
+
+### LEVEL C — Product / continuity-heavy
+
+Produk / karakter / lokasi harus benar-benar sama.
+
+Gunakan metode source Anda:
+
+**PRODUCT + CHARACTER + LOCATION SHEET.**
+
+Jadi AI menentukan level secara otomatis.
+
+Ini bisa memangkas waktu banyak.
+
+---
+
+# Reference sheet Anda juga bisa dibuat lebih efisien
+
+Saya suka konsep 5-view sheet dari source Anda.
+
+Tetapi ada satu perubahan yang saya sarankan.
+
+Jangan isi reference sheet dengan terlalu banyak teks dekoratif seperti:
+
+```text id="a58uy4"
+MODEL CODE
+SKU
+SEASON
+DATE
+COLOR HEX
+```
+
+kecuali memang diperlukan.
+
+Tujuan ingredient sebenarnya adalah memberi model **informasi visual yang bersih**.
+
+Google juga menyarankan ingredient subject/product menggunakan background sederhana/tersegmentasi. ([support.google.com](https://support.google.com/flow/answer/16353334?co=GENIE.Platform%3DDesktop&hl=en&utm_source=chatgpt.com))
+
+Untuk project harian, saya lebih memilih sheet seperti:
+
+```text id="npk816"
+REFERENCE SHEET
+
+FRONT
+3/4
+PROFILE
+FULL BODY
+DETAIL
+
+neutral gray background
+same identity
+same wardrobe
+same proportions
+same lighting
+no additional objects
+```
+
+Lebih sedikit noise.
+
+---
+
+# Prompt Omni juga jangan terlalu panjang
+
+Source Anda sebenarnya sudah memperlihatkan struktur yang benar.
+
+Saya akan standardisasi menjadi:
+
+```text id="hwxjrl"
+REFERENCE LOCK
+↓
+SCENE
+↓
+ACTION
+↓
+CAMERA
+↓
+MOTION
+↓
+LIGHTING
+↓
+CONTINUITY
+↓
+NEGATIVE
+```
+
+Contoh sederhana:
+
+```text id="udghjm"
+Use the attached image as the absolute visual reference.
+
+Maintain exactly:
+same character identity,
+same clothing,
+same location architecture,
+same lighting direction,
+same color palette.
+
+10-second cinematic shot.
+
+Scene:
+The astronaut walks slowly toward the enormous abandoned structure while fine red dust moves across the ground.
+
+Camera:
+low-angle medium-wide tracking shot,
+35mm cinematic lens,
+slow forward dolly,
+very subtle handheld micro movement.
+
+Motion:
+natural walking pace,
+cloth reacts softly to wind,
+dust movement remains physically realistic.
+
+Lighting:
+low sunset from camera-right,
+long shadows,
+warm highlights,
+cool shadow separation.
+
+End frame:
+the astronaut stops as the structure illuminates for the first time.
+
+No camera warping.
+No morphing.
+No identity changes.
+No additional characters.
+No text.
+No subtitles.
+No watermark.
+```
+
+Saya akan memakai pola seperti ini daripada prompt 400–600 kata setiap scene.
+
+**Visual reference membawa detail visual.  
+Text prompt membawa motion dan intent.**
+
+Jangan mendeskripsikan ulang semua hal yang sudah jelas dari gambar.
+
+---
+
+# Library kode Anda tetap berguna
+
+Dokumen `/MacroShot`, `/OrbitShot`, `/FogScene`, `/Cyberpunk`, `/LuxuryProduct`, `/FPVFlyThrough`, dan lain-lain menurut saya jangan Anda pilih manual setiap hari.
+
+GPT yang memilih.
+
+Misalnya storyboard mengatakan:
+
+> botol ditemukan di dasar laut.
+
+AI bisa membuat internal recipe:
+
+```text id="8tlwqo"
+/UnderwaterDream
+/MacroShot
+/PushIn
+/Cinematic
+```
+
+Lalu mengubah kode tadi menjadi instruksi prompt nyata.
+
+Begitu juga Couple Pose Codes.
+
+Jika scene membutuhkan:
+
+> pasangan berjalan sambil bergandengan tangan,
+
+AI bisa memilih:
+
+```text id="q7t911"
+/walkinghandinhand
+/goldenhourcouple
+/naturalcouple
+```
+
+Jadi source Anda berubah menjadi **creative vocabulary**, bukan daftar yang harus Anda baca setiap hari.
+
+---
+
+# Satu aturan untuk menghemat banyak waktu
+
+Saya akan memakai prinsip:
+
+## GENERATE CHEAP → APPROVE MOTION → UPSCALE
+
+Omni 1.1 sekarang menyediakan draft **360p dengan biaya kredit lebih rendah**, lalu output yang sudah bagus bisa dibawa ke resolusi lebih tinggi. Google memang memperkenalkannya khusus untuk iterasi cepat sebelum render final. ([blog.google](https://blog.google/innovation-and-ai/models-and-research/google-labs/new-creative-controls-google-flow/?utm_source=chatgpt.com))
+
+Jadi jangan:
+
+**720p → salah → 720p → salah → 720p.**
+
+Gunakan:
+
+**360p draft → motion benar → final/upscale.**
+
+Untuk proyek 6 scene, ini sangat membantu.
+
+---
+
+# Sistem reject juga harus sederhana
+
+Kalau Anda menilai setiap detail, proyek akan melewati 3 jam.
+
+Untuk setiap hasil video hanya cek **4 hal**:
+
+1. **Identity** — karakter/produk masih benar?
+2. **Motion** — gerakan masuk akal?
+3. **Composition** — framing masih bagus?
+4. **Story** — menyampaikan fungsi scene?
+
+Kalau 3/4 lolos:
+
+**KEEP.**
+
+Jangan regenerate demi “mungkin bisa 10% lebih bagus”.
+
+Untuk daily project, **consistency > perfection**.
+
+---
+
+# Jadi workflow final Anda
+
+Saya akan mengubah proses awal Anda:
+
+> reference  
+> → transcript  
+> → storyboard  
+> → image  
+> → prompt  
+> → Flow  
+> → ulangi
+
+menjadi:
+
+> **DROP REFERENCE**  
+> ↓  
+> **AI SOURCE ANALYSIS**  
+> ↓  
+> **MASTER PRODUCTION PACK**  
+> ↓  
+> **6 MASTER FRAMES**  
+> ↓  
+> **6 × OMNI 10s**  
+> ↓  
+> **ASSEMBLE**  
+> ↓  
+> **POST**
+
+Hanya itu.
+
+Dan ada satu hal yang sangat penting:
+
+### Anda seharusnya tidak menulis prompt baru di tengah proses.
+
+Begitu MASTER PRODUCTION PACK sudah jadi, semua prompt image dan Omni Scene 01–06 sudah tersedia.
+
+Kalau Scene 4 gagal, tinggal:
+
+> “Scene 4 gagal karena tangan berubah dan kamera terlalu cepat. Buat Prompt V2 tanpa mengubah continuity.”
+
+AI memperbaiki **scene itu saja**.
+
+---
+
+## Target waktu harian
+
+Saya akan menetapkan hard limit:
+
+**00:00–00:15 — Reference + source analysis**  
+**00:15–00:30 — Master Production Pack**  
+**00:30–01:00 — Generate 6 Master Frames**  
+**01:00–02:00 — Generate 6 Omni clips**  
+**02:00–02:30 — Regenerate maksimal 2–3 scene**  
+**02:30–03:00 — CapCut + audio + export**
+
+Kalau sudah jam 2:30:
+
+**stop optimizing.**
+
+Masuk editing.
+
+Itu yang membuat proyek ini benar-benar sustainable sebagai **1 video setiap hari**, bukan proyek yang setelah 4 hari terasa terlalu berat.
+
+Saya juga mencatat bahwa folder **Video** Anda saat ini masih kosong, sementara folder **Prompt** berisi tiga sumber yang tadi saya analisis. Jadi fondasi prompt library-nya sudah ada; tahap berikutnya paling bernilai adalah menjadikannya **satu Master Prompt “Daily Short Director”** yang menerima video/transcript apa pun dan langsung mengeluarkan Source Pack + storyboard 6 scene + Master Frame prompts + Omni 1.1 prompts dalam satu kali jalan.
