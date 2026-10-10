@@ -22,6 +22,7 @@ const DEFAULT_PROJECT = {
   title: 'Untitled Daily Short',
   sourceInput: '',
   imageReference: null,
+  imageReferences: [],
   soundtrack: null,
   assetSheet: null,
   assetLibrary: [],
@@ -41,6 +42,16 @@ const DEFAULT_PROJECT = {
   ],
   diagnoses: {}
 };
+
+function getImageReferences() {
+  if (Array.isArray(state.project.imageReferences) && state.project.imageReferences.length > 0) {
+    return state.project.imageReferences;
+  }
+  if (state.project.imageReference) {
+    return [state.project.imageReference];
+  }
+  return [];
+}
 
 let savedModel = localStorage.getItem(STORAGE_KEYS.MODEL) || 'gemini-3.8-flash';
 if (!savedModel || savedModel.includes('2.5') || savedModel.includes('1.5') || savedModel.includes('2.0')) {
@@ -138,6 +149,8 @@ const els = {
   assetVersionReel: document.getElementById('assetVersionReel'),
   assetLibrarySection: document.getElementById('assetLibrarySection'),
   assetLibraryCountBadge: document.getElementById('assetLibraryCountBadge'),
+  assetActiveCountBadge: document.getElementById('assetActiveCountBadge'),
+  assetActiveCountText: document.getElementById('assetActiveCountText'),
   btnUploadToAssetLibrary: document.getElementById('btnUploadToAssetLibrary'),
   inputAssetLibraryUpload: document.getElementById('inputAssetLibraryUpload'),
   assetLibraryGrid: document.getElementById('assetLibraryGrid'),
@@ -154,6 +167,7 @@ const els = {
   // Tab 4: Scenes
   anchorActiveBanner: document.getElementById('anchorActiveBanner'),
   anchorThumbBox: document.getElementById('anchorThumbBox'),
+  anchorThumbTray: document.getElementById('anchorThumbTray'),
   anchorBadgeStatus: document.getElementById('anchorBadgeStatus'),
   anchorDescriptionText: document.getElementById('anchorDescriptionText'),
   btnJumpToAssetTab: document.getElementById('btnJumpToAssetTab'),
@@ -208,6 +222,16 @@ function initProject() {
   if (saved) {
     try {
       state.project = JSON.parse(saved);
+      // Ensure imageReferences array exists and is populated
+      if (!Array.isArray(state.project.imageReferences)) {
+        state.project.imageReferences = [];
+        if (state.project.imageReference) {
+          state.project.imageReferences.push(state.project.imageReference);
+        }
+      }
+      state.project.imageReferences.forEach((ref, idx) => {
+        if (!ref.id) ref.id = `ref_${Date.now()}_${idx}`;
+      });
       // Clean up residual auto-generated boilerplate if previously saved
       if (state.project.sourceInput && state.project.sourceInput.startsWith('Video Referensi: "')) {
         state.project.sourceInput = '';
@@ -227,6 +251,7 @@ function initProject() {
 function resetProject() {
   const now = new Date();
   state.project = JSON.parse(JSON.stringify(DEFAULT_PROJECT));
+  state.project.imageReferences = [];
   state.project.id = 'proj_' + Date.now();
   state.project.date = now.toISOString().split('T')[0];
   state.project.title = `Daily Short — ${now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}`;
@@ -234,7 +259,25 @@ function resetProject() {
 }
 
 function saveCurrentProject() {
-  localStorage.setItem(STORAGE_KEYS.CURRENT, JSON.stringify(state.project));
+  try {
+    localStorage.setItem(STORAGE_KEYS.CURRENT, JSON.stringify(state.project));
+  } catch (err) {
+    console.warn('localStorage quota reached, keeping project in memory:', err);
+    try {
+      // If quota exceeded, trim extra asset library history from storage copy
+      const trimmed = JSON.parse(JSON.stringify(state.project));
+      if (trimmed.scenes) {
+        trimmed.scenes.forEach(s => {
+          if (s.history && s.history.length > 2) {
+            s.history = s.history.slice(-2);
+          }
+        });
+      }
+      localStorage.setItem(STORAGE_KEYS.CURRENT, JSON.stringify(trimmed));
+    } catch (e) {
+      console.warn('Cannot write to localStorage, session remains active in RAM.');
+    }
+  }
   updateSceneBadge();
 }
 
@@ -326,31 +369,39 @@ function setupEventListeners() {
     });
   });
 
-  // Tab 1: Universal Reference Ingest Hub (Drag & Drop, Paste Cmd+V, Browse)
-  els.smartDropContainer?.addEventListener('dragenter', (e) => {
+  // Drop container & textarea drop event handlers
+  const handleDropEvent = (e) => {
     e.preventDefault();
-    els.dragOverlay?.classList.remove('hidden');
-  });
+    e.stopPropagation();
+    els.dragOverlay?.classList.add('hidden');
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        processGenericReferenceFile(files[i]);
+      }
+    }
+  };
 
-  els.smartDropContainer?.addEventListener('dragover', (e) => {
+  const handleDragOverEvent = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     els.dragOverlay?.classList.remove('hidden');
-  });
+  };
 
+  els.smartDropContainer?.addEventListener('dragenter', handleDragOverEvent);
+  els.smartDropContainer?.addEventListener('dragover', handleDragOverEvent);
   els.smartDropContainer?.addEventListener('dragleave', (e) => {
     e.preventDefault();
     if (e.relatedTarget && !els.smartDropContainer.contains(e.relatedTarget)) {
       els.dragOverlay?.classList.add('hidden');
     }
   });
+  els.smartDropContainer?.addEventListener('drop', handleDropEvent);
 
-  els.smartDropContainer?.addEventListener('drop', (e) => {
-    e.preventDefault();
-    els.dragOverlay?.classList.add('hidden');
-    if (e.dataTransfer.files?.[0]) {
-      processGenericReferenceFile(e.dataTransfer.files[0]);
-    }
-  });
+  // Textarea specific drag & drop prevention
+  els.inputReference?.addEventListener('dragenter', handleDragOverEvent);
+  els.inputReference?.addEventListener('dragover', handleDragOverEvent);
+  els.inputReference?.addEventListener('drop', handleDropEvent);
 
   els.btnBrowseReferenceFile?.addEventListener('click', () => {
     els.inputImageRef?.click();
@@ -358,7 +409,12 @@ function setupEventListeners() {
 
   els.inputImageRef?.addEventListener('change', handleImageUpload);
   els.btnPasteFromClipboard?.addEventListener('click', handleClipboardButtonPaste);
+  
+  // Universal Paste Event Listeners (Window, Document, Container, Textarea)
   window.addEventListener('paste', handlePaste);
+  document.addEventListener('paste', handlePaste);
+  els.inputReference?.addEventListener('paste', handlePaste);
+  els.smartDropContainer?.addEventListener('paste', handlePaste);
 
   els.btnRemoveImage?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1128,7 +1184,8 @@ async function callGemini(promptText, systemInstruction = '', inlineDataParts = 
 // Handler: Generate Source Pack (Phase 1)
 async function handleGenerateSourcePack() {
   const input = els.inputReference.value.trim();
-  const hasImage = !!(state.project.imageReference && state.project.imageReference.data);
+  const imageRefs = getImageReferences();
+  const hasImage = imageRefs.length > 0;
 
   if (!input && !hasImage) {
     showToast('Silakan masukkan referensi teks atau upload foto referensi!');
@@ -1148,12 +1205,12 @@ async function handleGenerateSourcePack() {
 
     if (state.apiKey && state.apiKey.trim().length > 10) {
       // Live Gemini Multimodal Call
-      const sysPrompt = `You are an elite creative AI Director specialized in 60-second viral short video production. Your goal is to analyze reference material (text and/or reference image) and extract a compressed, high-density SOURCE PACK according to the Master Flow guidelines. Respond strictly with valid JSON conforming to the requested schema.`;
+      const sysPrompt = `You are an elite creative AI Director specialized in 60-second viral short video production. Your goal is to analyze reference material (text and/or reference images) and extract a compressed, high-density SOURCE PACK according to the Master Flow guidelines. Respond strictly with valid JSON conforming to the requested schema.`;
       
       const userPrompt = `Analyze this reference for a 60-second AI Short Video.
 Reference Text: "${input || '(Lihat foto referensi terlampir)'}"
 Theme constraint: "${theme}"
-${hasImage ? 'CRITICAL: A visual reference image is attached. Closely inspect the image (subject appearance, colors, lighting, textures, environment, materials, product design) and ensure the SOURCE PACK and future scenes strictly align with this visual anchor.' : ''}
+${hasImage ? `CRITICAL: ${imageRefs.length} visual reference image(s) are attached. Closely inspect all attached reference images (subject appearances, colors, lighting, textures, environment, materials, product design) and ensure the SOURCE PACK and future scenes strictly align with these visual anchors.` : ''}
 
 Extract the SOURCE PACK. Output ONLY a valid JSON object matching this exact structure:
 {
@@ -1185,10 +1242,14 @@ Extract the SOURCE PACK. Output ONLY a valid JSON object matching this exact str
 
       let inlineParts = [];
       if (hasImage) {
-        inlineParts.push({
-          inlineData: {
-            mimeType: state.project.imageReference.mimeType || 'image/jpeg',
-            data: state.project.imageReference.data
+        imageRefs.forEach(ref => {
+          if (ref.data) {
+            inlineParts.push({
+              inlineData: {
+                mimeType: ref.mimeType || 'image/jpeg',
+                data: ref.data
+              }
+            });
           }
         });
       }
@@ -1444,41 +1505,245 @@ function applyErrorPreset(type) {
 
 // ------------------------------------------
 // UNIVERSAL REFERENCE INGEST HANDLERS (TAB 1)
-// Supports Drag & Drop, Clipboard Paste (Cmd+V),
+// Supports Drag & Drop, Clipboard Paste (Cmd+V / Ctrl+V),
 // Images, Video Frame Extraction, Text, and PDF.
 // ------------------------------------------
 
-function handlePaste(e) {
-  const items = e.clipboardData?.items;
-  if (!items || items.length === 0) return;
+function isImageFile(file) {
+  if (!file) return false;
+  const type = (file.type || '').toLowerCase();
+  const name = (file.name || '').toLowerCase();
+  if (type.startsWith('image/')) return true;
+  if (name.match(/\.(png|jpe?g|webp|gif|bmp|svg|tiff?|heic|avif)$/i)) return true;
+  return false;
+}
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    if (item.type && item.type.indexOf('image') !== -1) {
-      const blob = item.getAsFile();
-      if (blob) {
-        processGenericReferenceFile(blob);
-        e.preventDefault();
-        return;
+function optimizeImageFile(file, maxWidth = 1200, maxHeight = 1200, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    if (!(file instanceof Blob)) {
+      return reject(new Error('Input bukan merupakan Blob/File yang valid.'));
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Gagal membaca file gambar.'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Gagal memuat gambar ke canvas.'));
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const mime = (file.type === 'image/png') ? 'image/png' : 'image/jpeg';
+        const dataUrl = canvas.toDataURL(mime, quality);
+        const base64Data = dataUrl.split(',')[1];
+        resolve({
+          dataUrl,
+          data: base64Data,
+          mimeType: mime,
+          width,
+          height
+        });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function optimizeImageFromUrl(urlOrDataUrl, maxWidth = 1200, maxHeight = 1200, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onerror = () => reject(new Error('Gagal memuat gambar dari URL.'));
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+      if (width > maxWidth || height > maxHeight) {
+        const ratio = Math.min(maxWidth / width, maxHeight / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const mime = urlOrDataUrl.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+      const dataUrl = canvas.toDataURL(mime, quality);
+      const base64Data = dataUrl.split(',')[1];
+      resolve({
+        dataUrl,
+        data: base64Data,
+        mimeType: mime,
+        width,
+        height
+      });
+    };
+    img.src = urlOrDataUrl;
+  });
+}
+
+function addImageReference(refItem) {
+  if (!refItem) return;
+  if (!Array.isArray(state.project.imageReferences)) {
+    state.project.imageReferences = [];
+    if (state.project.imageReference) {
+      state.project.imageReferences.push(state.project.imageReference);
+    }
+  }
+
+  // Prevent duplicate by id or name & dataUrl
+  const existingIdx = state.project.imageReferences.findIndex(r => 
+    r.id === refItem.id || (r.name === refItem.name && r.dataUrl === refItem.dataUrl)
+  );
+  if (existingIdx !== -1) {
+    state.project.imageReferences[existingIdx] = refItem;
+  } else {
+    state.project.imageReferences.push(refItem);
+  }
+
+  state.project.imageReference = state.project.imageReferences[0] || null;
+
+  saveCurrentProject();
+  renderImageRefUI();
+  renderAnchorBannerUI();
+}
+
+async function loadImageFromUrlOrData(urlOrData, fileName = 'clipboard_image.png') {
+  showToast('Memuat foto dari clipboard...');
+  const refId = `ref_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  try {
+    const optimized = await optimizeImageFromUrl(urlOrData);
+    const newRef = {
+      id: refId,
+      name: fileName,
+      size: Math.round(optimized.dataUrl.length * 0.75),
+      mimeType: optimized.mimeType,
+      dataUrl: optimized.dataUrl,
+      data: optimized.data,
+      type: 'image'
+    };
+    addImageReference(newRef);
+    showToast(`📸 Foto referensi ditambahkan! (Total: ${state.project.imageReferences.length})`);
+  } catch (err) {
+    console.warn('Fallback direct image loader:', err);
+    const newRef = {
+      id: refId,
+      name: fileName,
+      size: urlOrData.length,
+      mimeType: 'image/jpeg',
+      dataUrl: urlOrData,
+      data: urlOrData.includes(',') ? urlOrData.split(',')[1] : '',
+      type: 'image'
+    };
+    addImageReference(newRef);
+    showToast(`📸 Foto referensi ditambahkan! (Total: ${state.project.imageReferences.length})`);
+  }
+}
+
+function handlePaste(e) {
+  const clipboardData = e.clipboardData || window.clipboardData;
+  if (!clipboardData) return;
+
+  // 1. Cek e.clipboardData.files (file gambar yang di-copy dari Finder / Desktop Mac)
+  const files = clipboardData.files;
+  if (files && files.length > 0) {
+    let handled = false;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (isImageFile(file)) {
+        processGenericReferenceFile(file);
+        handled = true;
+      } else if (file.type.startsWith('video/') || file.name.match(/\.(mp4|webm|mov|mkv)$/i) ||
+          file.type === 'application/pdf' || file.name.endsWith('.pdf') ||
+          file.name.match(/\.(txt|md|json|csv)$/i)) {
+        processGenericReferenceFile(file);
+        handled = true;
+      }
+    }
+    if (handled) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+  }
+
+  // 2. Cek e.clipboardData.items (screenshot langsung ke clipboard / copy paste objek)
+  const items = clipboardData.items;
+  if (items && items.length > 0) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file' || (item.type && item.type.startsWith('image/'))) {
+        const blob = item.getAsFile();
+        if (blob && (isImageFile(blob) || (item.type && item.type.startsWith('image/')))) {
+          e.preventDefault();
+          e.stopPropagation();
+          processGenericReferenceFile(blob);
+          return;
+        }
       }
     }
   }
 
-  // If pasting plain text from clipboard outside the textarea
-  if (document.activeElement !== els.inputReference) {
-    const text = e.clipboardData.getData('text');
-    if (text && text.trim().length > 0) {
-      els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + text.trim();
-      state.project.sourceInput = els.inputReference.value;
-      saveCurrentProject();
-      showToast('📋 Teks dari Clipboard berhasil ditambahkan!');
+  // 3. Cek text/html (misal copy gambar dari browser / website yang menyalin tag <img>)
+  const html = clipboardData.getData('text/html');
+  if (html) {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const img = doc.querySelector('img');
+      if (img && img.src && (img.src.startsWith('data:image/') || img.src.startsWith('http') || img.src.startsWith('blob:'))) {
+        e.preventDefault();
+        e.stopPropagation();
+        loadImageFromUrlOrData(img.src, 'clipboard_web_image.png');
+        return;
+      }
+    } catch (err) {
+      console.warn('HTML clipboard parser notice:', err);
     }
+  }
+
+  // 4. Cek text/plain (jika berupa URL gambar langsung atau data:image base64)
+  const plainText = clipboardData.getData('text/plain')?.trim();
+  if (plainText) {
+    if (plainText.startsWith('data:image/')) {
+      e.preventDefault();
+      e.stopPropagation();
+      loadImageFromUrlOrData(plainText, 'clipboard_data_image.png');
+      return;
+    }
+    if (plainText.match(/^https?:\/\/.+\.(png|jpe?g|webp|gif|svg|avif)(\?.*)?$/i)) {
+      e.preventDefault();
+      e.stopPropagation();
+      loadImageFromUrlOrData(plainText, 'clipboard_image_link.png');
+      return;
+    }
+  }
+
+  // 5. Teks biasa di luar textarea input
+  if (document.activeElement !== els.inputReference && plainText && plainText.length > 0) {
+    e.preventDefault();
+    els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + plainText;
+    state.project.sourceInput = els.inputReference.value;
+    saveCurrentProject();
+    showToast('📋 Teks dari Clipboard berhasil ditambahkan!');
   }
 }
 
 async function handleClipboardButtonPaste() {
-  try {
-    if (navigator.clipboard?.read) {
+  // 1. Coba baca image blob dari Clipboard API modern
+  if (navigator.clipboard?.read) {
+    try {
       const items = await navigator.clipboard.read();
       for (const item of items) {
         for (const type of item.types) {
@@ -1489,60 +1754,97 @@ async function handleClipboardButtonPaste() {
           }
         }
       }
+    } catch (err) {
+      console.warn('navigator.clipboard.read notice:', err);
     }
-
-    const text = await navigator.clipboard.readText();
-    if (text && text.trim().length > 0) {
-      els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + text.trim();
-      state.project.sourceInput = els.inputReference.value;
-      saveCurrentProject();
-      showToast('📋 Teks dari Clipboard berhasil dimasukkan!');
-    } else {
-      showToast('Clipboard kosong atau tidak berisi teks/gambar.');
-    }
-  } catch (err) {
-    console.warn(err);
-    showToast('Silakan tekan tombol Cmd+V / Ctrl+V untuk menempel dari Clipboard.');
   }
+
+  // 2. Coba baca text / URL gambar dari clipboard
+  if (navigator.clipboard?.readText) {
+    try {
+      const text = (await navigator.clipboard.readText() || '').trim();
+      if (text.startsWith('data:image/')) {
+        loadImageFromUrlOrData(text, 'clipboard_data_image.png');
+        return;
+      }
+      if (text.match(/^https?:\/\/.+\.(png|jpe?g|webp|gif|svg|avif)(\?.*)?$/i)) {
+        loadImageFromUrlOrData(text, 'clipboard_image_link.png');
+        return;
+      }
+      if (text.length > 0) {
+        els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + text;
+        state.project.sourceInput = els.inputReference.value;
+        saveCurrentProject();
+        showToast('📋 Teks dari Clipboard berhasil dimasukkan!');
+        return;
+      }
+    } catch (err) {
+      console.warn('navigator.clipboard.readText notice:', err);
+    }
+  }
+
+  // 3. Panduan ramah jika clipboard akses dibatasi oleh browser
+  showToast('💡 Klik kolom input, lalu tekan Cmd+V (Mac) atau Ctrl+V untuk menempel foto!');
 }
 
 function handleImageUpload(e) {
-  const file = e.target.files?.[0];
-  if (file) {
-    processGenericReferenceFile(file);
+  const files = e.target.files;
+  if (files && files.length > 0) {
+    for (let i = 0; i < files.length; i++) {
+      processGenericReferenceFile(files[i]);
+    }
   }
+  e.target.value = '';
 }
 
-function processGenericReferenceFile(file) {
+async function processGenericReferenceFile(file) {
   if (!file) return;
 
   const fileName = file.name || `clipboard_image_${Date.now()}.png`;
-  const fileType = file.type || '';
+  const fileType = (file.type || '').toLowerCase();
+  const refId = `ref_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 
-  // 1. Image Files
-  if (fileType.startsWith('image/')) {
-    if (file.size > 15 * 1024 * 1024) {
-      showToast('Ukuran gambar maksimal 15MB.');
+  // 1. Image Files (Cek MIME type ATAU ekstensi file ATAU isImageFile)
+  if (isImageFile(file) || fileType.startsWith('image/')) {
+    if (file.size > 25 * 1024 * 1024) {
+      showToast('Ukuran gambar maksimal 25MB.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target.result;
-      const base64Data = dataUrl.split(',')[1];
-      state.project.imageReference = {
+
+    showToast('Memproses foto referensi...');
+    try {
+      const optimized = await optimizeImageFile(file);
+      const newRef = {
+        id: refId,
         name: fileName,
-        size: file.size,
-        mimeType: fileType || 'image/png',
-        dataUrl: dataUrl,
-        data: base64Data,
+        size: Math.round(optimized.dataUrl.length * 0.75),
+        mimeType: optimized.mimeType,
+        dataUrl: optimized.dataUrl,
+        data: optimized.data,
         type: 'image'
       };
-      saveCurrentProject();
-      renderImageRefUI();
-      renderAnchorBannerUI();
-      showToast(`📸 Foto referensi visual "${fileName}" berhasil dimuat!`);
-    };
-    reader.readAsDataURL(file);
+      addImageReference(newRef);
+      showToast(`📸 Foto "${fileName}" ditambahkan! (Total: ${state.project.imageReferences.length})`);
+    } catch (err) {
+      console.warn('Optimasi gagal, menggunakan pembacaan langsung:', err);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target.result;
+        const base64Data = dataUrl.split(',')[1];
+        const newRef = {
+          id: refId,
+          name: fileName,
+          size: file.size || dataUrl.length,
+          mimeType: fileType || 'image/png',
+          dataUrl: dataUrl,
+          data: base64Data,
+          type: 'image'
+        };
+        addImageReference(newRef);
+        showToast(`📸 Foto "${fileName}" ditambahkan! (Total: ${state.project.imageReferences.length})`);
+      };
+      reader.readAsDataURL(file);
+    }
     return;
   }
 
@@ -1567,10 +1869,11 @@ function processGenericReferenceFile(file) {
         canvas.height = video.videoHeight || 1280;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
         URL.revokeObjectURL(url);
 
-        state.project.imageReference = {
+        const newRef = {
+          id: refId,
           name: fileName,
           size: file.size,
           mimeType: 'image/jpeg',
@@ -1578,11 +1881,8 @@ function processGenericReferenceFile(file) {
           data: dataUrl.split(',')[1],
           type: 'video_frame'
         };
-
-        saveCurrentProject();
-        renderImageRefUI();
-        renderAnchorBannerUI();
-        showToast('🎬 Frame video berhasil dimuat sebagai acuan visual!');
+        addImageReference(newRef);
+        showToast(`🎬 Frame video "${fileName}" ditambahkan! (Total: ${state.project.imageReferences.length})`);
       } catch (err) {
         console.error(err);
         showToast('Gagal mengekstrak frame dari video.');
@@ -1638,17 +1938,32 @@ function processImageFile(file) {
   processGenericReferenceFile(file);
 }
 
-function removeImageRef() {
-  state.project.imageReference = null;
-  if (els.inputImageRef) els.inputImageRef.value = '';
-  if (els.inputReference && els.inputReference.value.startsWith('Video Referensi: "')) {
-    els.inputReference.value = '';
-    state.project.sourceInput = '';
+function removeImageRef(idToRemove = null) {
+  if (!Array.isArray(state.project.imageReferences)) {
+    state.project.imageReferences = [];
+    if (state.project.imageReference) state.project.imageReferences.push(state.project.imageReference);
   }
+
+  if (idToRemove) {
+    state.project.imageReferences = state.project.imageReferences.filter(item => item.id !== idToRemove);
+  } else {
+    state.project.imageReferences = [];
+  }
+
+  state.project.imageReference = state.project.imageReferences[0] || null;
+
+  if (state.project.imageReferences.length === 0) {
+    if (els.inputImageRef) els.inputImageRef.value = '';
+    if (els.inputReference && els.inputReference.value.startsWith('Video Referensi: "')) {
+      els.inputReference.value = '';
+      state.project.sourceInput = '';
+    }
+  }
+
   saveCurrentProject();
   renderImageRefUI();
   renderAnchorBannerUI();
-  showToast('Gambar referensi dihapus.');
+  showToast(idToRemove ? '1 foto referensi dihapus.' : 'Semua foto referensi dihapus.');
 }
 
 // ------------------------------------------
@@ -1736,7 +2051,76 @@ async function handleGenerateSoundtrack() {
 // Model: gemini-3.1-flash-image
 // ------------------------------------------
 
-async function callImageGeneration(promptText, aspectRatio = '9:16', referenceImage = null) {
+// Helper: Get up to 5 selected active assets from Section 3
+function getSelectedAssetReferences() {
+  if (!state.project) return [];
+  const library = state.project.assetLibrary || [];
+  let selected = library.filter(a => a.selectedForScenes);
+
+  // Fallback for existing/legacy projects: If none marked selectedForScenes, pick up to 5
+  if (selected.length === 0) {
+    if (library.length > 0) {
+      const primary = library.find(a => a.isPrimary) || library[0];
+      if (primary) {
+        primary.selectedForScenes = true;
+        selected = [primary];
+      }
+    } else if (state.project.assetSheet?.imageData && state.project.assetSheet?.isAnchorActive !== false) {
+      selected = [{
+        id: state.project.assetSheet.currentVersionId || 'as_primary',
+        title: state.project.assetSheet.title || 'Asset Anchor Sheet',
+        type: state.project.assetSheet.type || 'character',
+        imageData: state.project.assetSheet.imageData,
+        selectedForScenes: true
+      }];
+    }
+  }
+
+  return selected.slice(0, 5);
+}
+
+function toggleAssetSelectionForScenes(assetId) {
+  if (!state.project.assetLibrary) state.project.assetLibrary = [];
+  const asset = state.project.assetLibrary.find(a => a.id === assetId);
+  if (!asset) return;
+
+  const currentSelected = state.project.assetLibrary.filter(a => a.selectedForScenes);
+
+  if (asset.selectedForScenes) {
+    asset.selectedForScenes = false;
+    asset.isPrimary = false;
+    showToast(`Asset "${asset.title}" dilepas dari acuan Section 4.`);
+  } else {
+    if (currentSelected.length >= 5) {
+      showToast('⚠️ Maksimal 5 asset yang dapat dijadikan acuan di Section 4! Lepas salah satu asset terlebih dahulu.');
+      return;
+    }
+    asset.selectedForScenes = true;
+    showToast(`✓ Asset "${asset.title}" (${currentSelected.length + 1}/5) aktif sebagai acuan Section 4!`);
+  }
+
+  // Update primary assetSheet preview with the first selected asset
+  const activeList = getSelectedAssetReferences();
+  if (activeList.length > 0) {
+    const topAsset = activeList[0];
+    if (!state.project.assetSheet) {
+      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+    }
+    state.project.assetSheet.imageData = topAsset.imageData;
+    state.project.assetSheet.title = topAsset.title;
+    state.project.assetSheet.isAnchorActive = true;
+    state.project.assetSheet.currentVersionId = topAsset.id;
+  } else if (state.project.assetSheet) {
+    state.project.assetSheet.isAnchorActive = false;
+  }
+
+  saveCurrentProject();
+  renderAssetLibraryUI();
+  renderAnchorBannerUI();
+  renderScenesUI();
+}
+
+async function callImageGeneration(promptText, aspectRatio = '9:16', referenceImages = null) {
   if (!state.apiKey || state.apiKey.trim().length < 10) {
     showToast('⚠️ Masukkan Google Gemini API Key di menu Pengaturan (ikon Gear)!');
     openSettings();
@@ -1751,28 +2135,39 @@ async function callImageGeneration(promptText, aspectRatio = '9:16', referenceIm
 
   const apiKey = state.apiKey.trim();
 
+  // Normalize referenceImages into an array of up to 5 images
+  let refList = [];
+  if (Array.isArray(referenceImages)) {
+    refList = referenceImages.filter(Boolean);
+  } else if (referenceImages) {
+    refList = [referenceImages];
+  }
+  // Clamp to max 5 references
+  refList = refList.slice(0, 5);
+
   // Primary Call: Google Gemini Banana Pro via official Interactions API
   const interactionsEndpoint = `https://generativelanguage.googleapis.com/v1beta/interactions`;
   
   let inputPayload;
-  if (referenceImage) {
-    const rawBase64 = referenceImage.startsWith('data:') 
-      ? referenceImage.split(',')[1] 
-      : referenceImage;
-    const mime = referenceImage.startsWith('data:')
-      ? (referenceImage.split(';')[0].replace('data:', '') || 'image/jpeg')
-      : 'image/jpeg';
+  if (refList.length > 0) {
+    const textPrompt = refList.length === 1 
+      ? `Create the scene master frame adhering to this prompt: ${cleanPrompt}. Maintain exact subject appearance, character design, materials, and lighting consistency from the reference image attached.`
+      : `Create the scene master frame adhering to this prompt: ${cleanPrompt}. Maintain exact subject identity, character consistency, clothing, object details, colors, textures, and lighting matching the ${refList.length} attached visual reference assets.`;
 
     inputPayload = [
       {
         type: 'text',
-        text: `Create the scene master frame adhering to this prompt: ${cleanPrompt}. Maintain exact subject appearance, character design, materials, and lighting consistency from the reference image attached.`
+        text: textPrompt
       },
-      {
-        type: 'image',
-        data: rawBase64,
-        mime_type: mime
-      }
+      ...refList.map(ref => {
+        const rawBase64 = ref.startsWith('data:') ? ref.split(',')[1] : ref;
+        const mime = ref.startsWith('data:') ? (ref.split(';')[0].replace('data:', '') || 'image/jpeg') : 'image/jpeg';
+        return {
+          type: 'image',
+          data: rawBase64,
+          mime_type: mime
+        };
+      })
     ];
   } else {
     inputPayload = cleanPrompt;
@@ -1879,58 +2274,96 @@ function getSceneReference(sceneNum) {
   const isSequential = state.project.sequentialChaining !== false;
   const scenes = state.project.scenes || [];
   
-  // Tab 3 Active Asset Reference (or Tab 1 image fallback)
-  const assetAnchor = (state.project.assetSheet?.isAnchorActive !== false && state.project.assetSheet?.imageData)
-    ? state.project.assetSheet.imageData
-    : (state.project.imageReference?.dataUrl || null);
-  const assetTitle = state.project.assetSheet?.title || 'Asset Anchor Sheet';
+  // Tab 3 Active Asset References (up to 5 assets)
+  const activeAssets = getSelectedAssetReferences(); // array of up to 5 items
+  const assetImages = activeAssets.map(a => a.imageData).filter(Boolean);
+  const assetTitles = activeAssets.map(a => a.title);
 
-  // SCENE 1: Always anchors from Asset Sheet (or Tab 1 reference image)
+  // Fallback to Tab 1 image references if no Section 3 assets are active
+  let baseImages = assetImages;
+  let baseLabel = '';
+  if (baseImages.length === 0) {
+    const tab1Refs = getImageReferences();
+    if (tab1Refs.length > 0) {
+      baseImages = tab1Refs.map(r => r.dataUrl || `data:${r.mimeType || 'image/jpeg'};base64,${r.data}`).filter(Boolean).slice(0, 5);
+      baseLabel = `${baseImages.length} Foto Input Fase 01`;
+    }
+  } else {
+    baseLabel = `${activeAssets.length} Asset Sheet (${assetTitles.join(', ')})`;
+  }
+
+  // SCENE 1: Always anchors from all active Section 3 assets (or Tab 1 images)
   if (!isSequential || sceneNum === 1) {
     return {
-      image: assetAnchor,
-      label: assetAnchor ? (state.project.assetSheet?.imageData ? `Asset Sheet (${assetTitle})` : 'Foto Referensi Fase 01') : 'Mandiri (Tanpa Reference)',
+      images: baseImages.slice(0, 5),
+      image: baseImages[0] || null,
+      label: baseImages.length > 0 ? baseLabel : 'Mandiri (Tanpa Reference)',
       isLoop: false,
-      sourceType: 'asset'
+      sourceType: 'assets'
     };
   }
 
-  // SCENES 2, 3, 4, 5: Reference the immediate previous Scene (Scene N-1)
+  // SCENES 2, 3, 4, 5: Reference the immediate previous Scene (Scene N-1) PLUS active Section 3 assets
   if (sceneNum >= 2 && sceneNum <= 5) {
     const prevScene = scenes.find(s => s.number === sceneNum - 1);
     if (prevScene && prevScene.imageUrl) {
+      // Combine: previous scene image (priority 1) + up to 4 active Section 3 assets = max 5 images
+      const combined = [prevScene.imageUrl, ...baseImages.slice(0, 4)];
+      const assetCount = combined.length - 1;
+      const refText = assetCount > 0 
+        ? `Scene 0${sceneNum - 1} + ${assetCount} Asset Sheet (${assetTitles.slice(0, assetCount).join(', ')})`
+        : `Master Frame Scene 0${sceneNum - 1} (Sequential Chain)`;
+
       return {
+        images: combined,
         image: prevScene.imageUrl,
-        label: `Master Frame Scene 0${sceneNum - 1} (Sequential Chain)`,
+        label: refText,
         isLoop: false,
-        sourceType: 'previous_scene'
+        sourceType: 'previous_scene_and_assets'
       };
     }
     // Fallback if previous scene has not been generated yet
     return {
-      image: assetAnchor,
-      label: assetAnchor ? `${assetTitle} (Standby Scene 0${sceneNum - 1})` : 'Mandiri (Tanpa Reference)',
+      images: baseImages.slice(0, 5),
+      image: baseImages[0] || null,
+      label: baseImages.length > 0 ? `${baseLabel} (Standby Scene 0${sceneNum - 1})` : 'Mandiri (Tanpa Reference)',
       isLoop: false,
-      sourceType: 'fallback_asset'
+      sourceType: 'fallback_assets'
     };
   }
 
-  // SCENE 6 (ENDING / LOOP): References Scene 5 AND transitions seamlessly back to Scene 1
+  // SCENE 6 (ENDING / LOOP): References Scene 5, Scene 1 (Loop Target), PLUS active Section 3 assets
   if (sceneNum === 6) {
     const scene5 = scenes.find(s => s.number === 5);
     const scene1 = scenes.find(s => s.number === 1);
-    const prevImage = scene5?.imageUrl || assetAnchor;
+    const prevImg = scene5?.imageUrl || baseImages[0];
+    const loopTarget = scene1?.imageUrl || null;
+
+    const combined = [];
+    if (prevImg) combined.push(prevImg);
+    if (loopTarget && !combined.includes(loopTarget)) combined.push(loopTarget);
+    // Add active assets up to 5 total images
+    for (const img of baseImages) {
+      if (combined.length < 5 && !combined.includes(img)) combined.push(img);
+    }
 
     return {
-      image: prevImage,
-      label: scene5?.imageUrl ? `Scene 05 ➔ Loop Match ke Scene 01` : `${assetTitle} ➔ Loop Match ke Scene 01`,
+      images: combined,
+      image: prevImg || null,
+      label: scene5?.imageUrl ? `Scene 05 ➔ Loop Match ke Scene 01 + Asset Anchor` : `${baseLabel} ➔ Loop Match ke Scene 01`,
       isLoop: true,
       sourceType: 'loop_chain',
-      loopTargetImage: scene1?.imageUrl || null
+      loopTargetImage: loopTarget
     };
   }
 
-  return { image: assetAnchor, label: assetTitle, isLoop: false, sourceType: 'asset' };
+  return {
+    images: baseImages.slice(0, 5),
+    image: baseImages[0] || null,
+    label: baseLabel || 'Asset Anchor',
+    isLoop: false,
+    sourceType: 'assets'
+  };
 }
 
 async function generateSceneImage(sceneNum) {
@@ -1949,14 +2382,15 @@ async function generateSceneImage(sceneNum) {
   const refInfo = getSceneReference(sceneNum);
 
   if (canvasEl) {
+    const imgCount = refInfo.images?.length || (refInfo.image ? 1 : 0);
     canvasEl.innerHTML = `
       <div class="w-full h-full min-h-[360px] rounded-xl animate-shimmer flex flex-col items-center justify-center p-6 text-center space-y-3 bg-[#06080d]">
         <div class="w-10 h-10 rounded-full border-2 border-amber-400 border-t-transparent animate-spin"></div>
         <div class="text-xs font-bold text-amber-300">Google Gemini Banana Pro Rendering...</div>
         <div class="text-[10px] text-slate-400 font-mono">gemini-3.1-flash-image • 9:16 Vertical</div>
-        ${refInfo.image ? `
-          <div class="text-[10px] text-amber-300 font-semibold px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 flex items-center gap-1">
-            <span>🔗 Acuan: ${refInfo.label}</span>
+        ${imgCount > 0 ? `
+          <div class="text-[10px] text-amber-300 font-semibold px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center gap-1.5 max-w-xs mx-auto text-left">
+            <span>🔗 Acuan: ${refInfo.label} (${imgCount} Asset/Frame)</span>
           </div>
         ` : ''}
       </div>
@@ -1974,7 +2408,7 @@ async function generateSceneImage(sceneNum) {
   }
 
   try {
-    const imgUrl = await callImageGeneration(dynamicPrompt, '9:16', refInfo.image);
+    const imgUrl = await callImageGeneration(dynamicPrompt, '9:16', refInfo.images || refInfo.image);
 
     // Save into Scene History Bank (v1, v2, v3...) for instant rollback
     if (!scene.history) scene.history = [];
@@ -2081,7 +2515,7 @@ function resetAssetPrompt() {
   showToast('Prompt Asset Sheet direset ke format optimal!');
 }
 
-function handleCustomAssetUpload(e) {
+async function handleCustomAssetUpload(e) {
   const file = e.target.files?.[0];
   if (!file) return;
   if (!file.type.startsWith('image/')) {
@@ -2089,118 +2523,131 @@ function handleCustomAssetUpload(e) {
     return;
   }
   const reader = new FileReader();
-  reader.onload = (event) => {
-    const dataUrl = event.target.result;
-    if (!state.project.assetSheet) {
-      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+  reader.onload = async (event) => {
+    try {
+      const rawUrl = event.target.result;
+      const dataUrl = await compressImageIfNeeded(rawUrl);
+      if (!state.project.assetSheet) {
+        state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+      }
+      state.project.assetSheet.imageData = dataUrl;
+      state.project.assetSheet.isAnchorActive = true;
+
+      // Push into version history
+      if (!state.project.assetSheet.history) state.project.assetSheet.history = [];
+      const verNum = state.project.assetSheet.history.length + 1;
+      const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+      const newVer = {
+        id: `as_v${verNum}_${Date.now()}`,
+        version: verNum,
+        imageData: dataUrl,
+        createdAt: timeStr,
+        prompt: 'Custom Upload',
+        type: state.project.assetSheet.type || 'character'
+      };
+      state.project.assetSheet.history.push(newVer);
+      state.project.assetSheet.currentVersionId = newVer.id;
+
+      // Save to Bank Asset & Galeri Referensi
+      if (!state.project.assetLibrary) state.project.assetLibrary = [];
+      const activeCount = state.project.assetLibrary.filter(a => a.selectedForScenes).length;
+      const shouldSelect = activeCount < 5;
+
+      state.project.assetLibrary.unshift({
+        id: newVer.id,
+        title: `${file.name.replace(/\.[^/.]+$/, "")} (Upload)`,
+        type: state.project.assetSheet.type || 'character',
+        imageData: dataUrl,
+        createdAt: timeStr,
+        prompt: 'Custom Upload',
+        selectedForScenes: shouldSelect,
+        isPrimary: shouldSelect && activeCount === 0
+      });
+
+      saveCurrentProject();
+      renderAssetSheetUI();
+      renderAssetLibraryUI();
+      renderAnchorBannerUI();
+      renderScenesUI();
+      showToast('Gambar custom berhasil diunggah & disimpan di Bank Asset sebagai Visual Anchor!');
+    } catch (err) {
+      console.error(err);
+      showToast(`Gagal upload asset: ${err.message}`);
     }
-    state.project.assetSheet.imageData = dataUrl;
-    state.project.assetSheet.isAnchorActive = true;
-
-    // Push into version history
-    if (!state.project.assetSheet.history) state.project.assetSheet.history = [];
-    const verNum = state.project.assetSheet.history.length + 1;
-    const newVer = {
-      id: `as_v${verNum}_${Date.now()}`,
-      version: verNum,
-      imageData: dataUrl,
-      createdAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-      prompt: 'Custom Upload',
-      type: state.project.assetSheet.type || 'character'
-    };
-    state.project.assetSheet.history.push(newVer);
-    state.project.assetSheet.currentVersionId = newVer.id;
-
-    // Save to Bank Asset & Galeri Referensi
-    if (!state.project.assetLibrary) state.project.assetLibrary = [];
-    state.project.assetLibrary.forEach(a => a.isPrimary = false);
-    state.project.assetLibrary.unshift({
-      id: newVer.id,
-      title: `${file.name} (Upload)`,
-      type: state.project.assetSheet.type || 'character',
-      imageData: dataUrl,
-      createdAt: newVer.createdAt,
-      prompt: 'Custom Upload',
-      isPrimary: true
-    });
-
-    saveCurrentProject();
-    renderAssetSheetUI();
-    renderAnchorBannerUI();
-    showToast('Gambar custom berhasil diunggah & disimpan di Bank Asset sebagai Visual Anchor!');
   };
   reader.readAsDataURL(file);
 }
 
-function handleAssetLibraryUpload(e) {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  if (!file.type.startsWith('image/')) {
-    showToast('Harap pilih file gambar (.jpg, .png, .webp)!');
-    return;
+async function handleAssetLibraryUpload(e) {
+  const files = Array.from(e.target.files || []);
+  if (files.length === 0) return;
+
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+
+    await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const rawUrl = event.target.result;
+          const dataUrl = await compressImageIfNeeded(rawUrl);
+          const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+          const assetId = `lib_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+
+          if (!state.project.assetLibrary) state.project.assetLibrary = [];
+          const activeCount = state.project.assetLibrary.filter(a => a.selectedForScenes).length;
+          const shouldSelect = activeCount < 5;
+
+          const newAsset = {
+            id: assetId,
+            title: file.name.replace(/\.[^/.]+$/, ""),
+            type: 'character',
+            imageData: dataUrl,
+            createdAt: timeStr,
+            prompt: 'Direct Bank Upload',
+            selectedForScenes: shouldSelect,
+            isPrimary: shouldSelect && activeCount === 0
+          };
+          state.project.assetLibrary.unshift(newAsset);
+
+          // If first active asset, sync to assetSheet preview
+          if (shouldSelect && activeCount === 0) {
+            if (!state.project.assetSheet) {
+              state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+            }
+            state.project.assetSheet.imageData = dataUrl;
+            state.project.assetSheet.title = newAsset.title;
+            state.project.assetSheet.isAnchorActive = true;
+            state.project.assetSheet.currentVersionId = assetId;
+          }
+        } catch (err) {
+          console.error(err);
+        }
+        resolve();
+      };
+      reader.readAsDataURL(file);
+    });
   }
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    const dataUrl = event.target.result;
-    const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-    const assetId = `lib_${Date.now()}`;
 
-    if (!state.project.assetLibrary) state.project.assetLibrary = [];
-    state.project.assetLibrary.forEach(a => a.isPrimary = false);
-
-    const newAsset = {
-      id: assetId,
-      title: file.name.replace(/\.[^/.]+$/, ""),
-      type: 'character',
-      imageData: dataUrl,
-      createdAt: timeStr,
-      prompt: 'Direct Bank Upload',
-      isPrimary: true
-    };
-    state.project.assetLibrary.unshift(newAsset);
-
-    // Set as active anchor immediately
-    if (!state.project.assetSheet) {
-      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
-    }
-    state.project.assetSheet.imageData = dataUrl;
-    state.project.assetSheet.title = newAsset.title;
-    state.project.assetSheet.isAnchorActive = true;
-    state.project.assetSheet.currentVersionId = assetId;
-
-    saveCurrentProject();
-    renderAssetSheetUI();
-    renderAnchorBannerUI();
-    showToast(`Asset "${newAsset.title}" ditambahkan ke Bank & aktif sebagai acuan 6 scene!`);
-  };
-  reader.readAsDataURL(file);
+  e.target.value = '';
+  saveCurrentProject();
+  renderAssetSheetUI();
+  renderAssetLibraryUI();
+  renderAnchorBannerUI();
+  renderScenesUI();
+  showToast(`${files.length} Asset berhasil ditambahkan ke Bank Asset!`);
 }
 
 function selectActiveLibraryAsset(assetId) {
-  const asset = (state.project.assetLibrary || []).find(a => a.id === assetId);
-  if (!asset) return;
-
-  state.project.assetLibrary.forEach(a => a.isPrimary = (a.id === assetId));
-
-  if (!state.project.assetSheet) {
-    state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
-  }
-  state.project.assetSheet.imageData = asset.imageData;
-  state.project.assetSheet.title = asset.title;
-  state.project.assetSheet.type = asset.type;
-  state.project.assetSheet.isAnchorActive = true;
-  state.project.assetSheet.currentVersionId = asset.id;
-
-  saveCurrentProject();
-  renderAssetSheetUI();
-  renderAnchorBannerUI();
-  showToast(`★ Asset "${asset.title}" sekarang aktif sebagai acuan visual utama 6 scene!`);
+  toggleAssetSelectionForScenes(assetId);
 }
 
 function deleteLibraryAsset(assetId) {
   state.project.assetLibrary = (state.project.assetLibrary || []).filter(a => a.id !== assetId);
   saveCurrentProject();
   renderAssetLibraryUI();
+  renderAnchorBannerUI();
+  renderScenesUI();
   showToast('Asset dihapus dari Bank Referensi.');
 }
 
@@ -2214,12 +2661,15 @@ function rollbackAssetVersion(versionId) {
   state.project.assetSheet.isAnchorActive = true;
 
   if (state.project.assetLibrary) {
-    state.project.assetLibrary.forEach(a => a.isPrimary = (a.id === ver.id));
+    const asset = state.project.assetLibrary.find(a => a.id === ver.id);
+    if (asset) asset.selectedForScenes = true;
   }
 
   saveCurrentProject();
   renderAssetSheetUI();
+  renderAssetLibraryUI();
   renderAnchorBannerUI();
+  renderScenesUI();
   showToast(`Asset Sheet di-rollback ke Versi ${ver.version}!`);
 }
 
@@ -2250,7 +2700,8 @@ async function handleGenerateAssetSheet() {
   els.assetCanvasContainer?.appendChild(tempCanvas);
 
   try {
-    const imgUrl = await callImageGeneration(promptText, '9:16');
+    const rawImgUrl = await callImageGeneration(promptText, '9:16');
+    const imgUrl = await compressImageIfNeeded(rawImgUrl);
     if (!state.project.assetSheet) {
       state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
     }
@@ -2274,7 +2725,9 @@ async function handleGenerateAssetSheet() {
 
     // Save to Bank Asset & Galeri Referensi
     if (!state.project.assetLibrary) state.project.assetLibrary = [];
-    state.project.assetLibrary.forEach(a => a.isPrimary = false);
+    const activeCount = state.project.assetLibrary.filter(a => a.selectedForScenes).length;
+    const shouldSelect = activeCount < 5;
+
     state.project.assetLibrary.unshift({
       id: newVer.id,
       title: `${state.project.assetSheet.title} (v${verNum})`,
@@ -2282,12 +2735,15 @@ async function handleGenerateAssetSheet() {
       imageData: imgUrl,
       createdAt: timeStr,
       prompt: promptText,
-      isPrimary: true
+      selectedForScenes: shouldSelect,
+      isPrimary: shouldSelect && activeCount === 0
     });
 
     saveCurrentProject();
     renderAssetSheetUI();
+    renderAssetLibraryUI();
     renderAnchorBannerUI();
+    renderScenesUI();
     showToast(`Asset Sheet (v${verNum}) berhasil dibuat & disimpan ke Bank Referensi!`);
   } catch (err) {
     console.error(err);
@@ -2532,14 +2988,35 @@ function updateSceneBadge() {
 }
 
 function renderImageRefUI() {
-  const imgRef = state.project.imageReference;
-  if (imgRef && imgRef.dataUrl) {
-    if (els.attachedMediaTray) els.attachedMediaTray.classList.remove('hidden');
-    if (els.imagePreviewImg) els.imagePreviewImg.src = imgRef.dataUrl;
+  const imageRefs = getImageReferences();
+  if (imageRefs.length > 0) {
+    if (els.attachedMediaTray) {
+      els.attachedMediaTray.classList.remove('hidden');
+      els.attachedMediaTray.classList.add('flex');
+      els.attachedMediaTray.innerHTML = imageRefs.map((item) => `
+        <div class="relative group/thumb shrink-0" data-id="${item.id}">
+          <img src="${item.dataUrl}" alt="${item.name || 'Referensi'}" class="w-16 h-16 object-cover rounded-xl border border-dark-border shadow-md hover:border-orange-500/70 transition" title="${item.name || 'Foto Referensi'}">
+          <button type="button" class="btn-remove-single-ref absolute -top-1.5 -right-1.5 p-1 rounded-full bg-red-600 hover:bg-red-500 text-white shadow-lg transition" data-id="${item.id}" title="Hapus foto ini">
+            <i data-lucide="x" class="w-3 h-3"></i>
+          </button>
+        </div>
+      `).join('');
+
+      els.attachedMediaTray.querySelectorAll('.btn-remove-single-ref').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removeImageRef(btn.dataset.id);
+        });
+      });
+    }
   } else {
-    if (els.attachedMediaTray) els.attachedMediaTray.classList.add('hidden');
-    if (els.imagePreviewImg) els.imagePreviewImg.src = '';
+    if (els.attachedMediaTray) {
+      els.attachedMediaTray.classList.add('hidden');
+      els.attachedMediaTray.classList.remove('flex');
+      els.attachedMediaTray.innerHTML = '';
+    }
   }
+  lucide.createIcons();
 }
 
 function renderSourcePackUI() {
@@ -2769,9 +3246,14 @@ function renderAssetVersionReel() {
 function renderAssetLibraryUI() {
   if (!els.assetLibraryGrid) return;
   const library = state.project.assetLibrary || [];
+  const selectedAssets = getSelectedAssetReferences();
+  const selectedCount = selectedAssets.length;
 
   if (els.assetLibraryCountBadge) {
     els.assetLibraryCountBadge.textContent = `${library.length} Tersimpan`;
+  }
+  if (els.assetActiveCountText) {
+    els.assetActiveCountText.textContent = `${selectedCount}/5 Acuan Aktif`;
   }
 
   if (library.length === 0) {
@@ -2781,25 +3263,26 @@ function renderAssetLibraryUI() {
           <i data-lucide="layers" class="w-5 h-5 text-purple-400"></i>
         </div>
         <p class="text-xs text-slate-300 font-semibold">Bank Asset Masih Kosong</p>
-        <p class="text-[11px] text-slate-500 max-w-sm mx-auto">Setiap Asset Sheet yang di-generate atau gambar yang Anda upload akan tersimpan di sini. Anda bisa memilih asset mana saja untuk menjadi acuan pembuatan 6 scene.</p>
+        <p class="text-[11px] text-slate-500 max-w-sm mx-auto">Setiap Asset Sheet yang di-generate atau gambar yang Anda upload akan tersimpan di sini. Anda bisa memilih hingga maksimal 5 asset sebagai acuan pembuatan 6 Master Frame.</p>
       </div>
     `;
     lucide.createIcons();
     return;
   }
 
-  els.assetLibraryGrid.innerHTML = library.map(item => {
-    const isPrimary = item.isPrimary || (state.project.assetSheet?.imageData === item.imageData);
+  els.assetLibraryGrid.innerHTML = library.map((item) => {
+    const selectedIndex = selectedAssets.findIndex(s => s.id === item.id);
+    const isSelected = selectedIndex !== -1;
     const typeLabel = item.type === 'character' ? '🧍 Karakter' : (item.type === 'object' ? '📦 Objek' : (item.type === 'world' ? '🌌 World' : '🎬 Hero'));
 
     return `
-      <div class="group relative rounded-xl bg-dark-card border ${isPrimary ? 'border-purple-500 ring-2 ring-purple-500/30 bg-purple-950/15' : 'border-dark-border hover:border-purple-500/40'} p-2.5 space-y-2 transition flex flex-col justify-between shadow-lg">
-        <div class="relative rounded-lg overflow-hidden aspect-short bg-black border border-dark-border/80">
-          <img src="${item.imageData}" alt="${item.title}" class="w-full h-full object-cover">
-          ${isPrimary ? `
+      <div class="group relative rounded-xl bg-dark-card border ${isSelected ? 'border-purple-500 ring-2 ring-purple-500/40 bg-purple-950/25' : 'border-dark-border hover:border-purple-500/40'} p-2.5 space-y-2 transition flex flex-col justify-between shadow-lg">
+        <div class="relative rounded-lg overflow-hidden aspect-short bg-black border border-dark-border/80 cursor-pointer" onclick="openImageModal('${item.imageData}')">
+          <img src="${item.imageData}" alt="${item.title}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+          ${isSelected ? `
             <div class="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md bg-purple-600 text-[9px] font-black text-white uppercase tracking-wider shadow-md flex items-center gap-1">
               <i data-lucide="check-circle" class="w-2.5 h-2.5"></i>
-              <span>REFERENCE UTAMA</span>
+              <span>ACUAN #${selectedIndex + 1}</span>
             </div>
           ` : ''}
           <div class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur-sm text-[9px] font-mono text-purple-300">
@@ -2817,18 +3300,19 @@ function renderAssetLibraryUI() {
           <h5 class="text-xs font-bold text-white truncate" title="${item.title}">${item.title}</h5>
         </div>
 
-        <button type="button" class="btn-select-lib-asset w-full py-1.5 px-2 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 ${isPrimary ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40 cursor-default' : 'bg-dark-panel hover:bg-purple-600 hover:text-white border border-dark-border text-slate-300'}" data-id="${item.id}">
-          <i data-lucide="${isPrimary ? 'check' : 'check-circle'}" class="w-3 h-3"></i>
-          <span>${isPrimary ? 'Sedang Digunakan' : 'Gunakan Sebagai Acuan'}</span>
+        <button type="button" class="btn-toggle-lib-asset w-full py-1.5 px-2 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 ${isSelected ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 hover:bg-purple-700' : 'bg-dark-panel hover:bg-purple-600/30 hover:text-white border border-dark-border text-slate-300'}" data-id="${item.id}">
+          <i data-lucide="${isSelected ? 'check' : 'plus-circle'}" class="w-3 h-3"></i>
+          <span>${isSelected ? `✓ Acuan Section 4 (#${selectedIndex + 1}/5)` : `+ Jadikan Acuan (${selectedCount}/5)`}</span>
         </button>
       </div>
     `;
   }).join('');
 
   // Re-bind buttons inside library grid
-  els.assetLibraryGrid.querySelectorAll('.btn-select-lib-asset').forEach(btn => {
-    btn.addEventListener('click', () => {
-      selectActiveLibraryAsset(btn.dataset.id);
+  els.assetLibraryGrid.querySelectorAll('.btn-toggle-lib-asset').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleAssetSelectionForScenes(btn.dataset.id);
     });
   });
 
@@ -2843,39 +3327,97 @@ function renderAssetLibraryUI() {
 }
 
 function renderAnchorBannerUI() {
-  const as = state.project.assetSheet;
-  const imgRef = state.project.imageReference;
+  const activeAssets = getSelectedAssetReferences(); // Up to 5 assets
+  const imageRefs = getImageReferences(); // From Section 1
   const isSeq = state.project.sequentialChaining !== false;
 
-  if (as && as.imageData && as.isAnchorActive !== false) {
-    if (els.anchorThumbBox) els.anchorThumbBox.innerHTML = `<img src="${as.imageData}" class="w-full h-full object-cover">`;
+  if (activeAssets.length > 0) {
     if (els.anchorBadgeStatus) {
       els.anchorBadgeStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
-      els.anchorBadgeStatus.textContent = `Aktif (${as.title || 'Asset Sheet'})`;
+      els.anchorBadgeStatus.textContent = `${activeAssets.length}/5 Asset Acuan Aktif`;
     }
+
     if (els.anchorDescriptionText) {
+      const titles = activeAssets.map(a => a.title).join(', ');
       els.anchorDescriptionText.textContent = isSeq
-        ? `Asset Sheet ini menjadi acuan awal Scene 01, dilanjutkan secara Sequential Chain (Scene 1 ➔ 2 ➔ ... ➔ 6 Loop).`
-        : `Google Gemini Banana Pro mengunci konsistensi Scene 1-6 dengan acuan visual Asset Sheet ini.`;
+        ? `Menggunakan ${activeAssets.length} asset (${titles}) sebagai visual anchor awal, dilanjutkan berantai (Sequential Chain 1 ➔ 2 ➔ ... ➔ 6 Loop).`
+        : `Google Gemini Banana Pro mengunci konsistensi Scene 1-6 dengan acuan bersamaan ${activeAssets.length} asset (${titles}).`;
     }
-  } else if (imgRef && (imgRef.dataUrl || imgRef.data)) {
-    const src = imgRef.dataUrl || `data:${imgRef.mimeType || 'image/jpeg'};base64,${imgRef.data}`;
-    if (els.anchorThumbBox) els.anchorThumbBox.innerHTML = `<img src="${src}" class="w-full h-full object-cover">`;
+
+    if (els.anchorThumbTray) {
+      els.anchorThumbTray.innerHTML = `
+        ${activeAssets.map((asset, idx) => `
+          <div class="relative group/thumb shrink-0 rounded-lg overflow-hidden border border-purple-500/60 bg-dark-card w-14 h-20 shadow-md flex flex-col justify-between">
+            <img src="${asset.imageData}" alt="${asset.title}" class="w-full h-full object-cover cursor-pointer hover:scale-105 transition" onclick="openImageModal('${asset.imageData}')">
+            <div class="absolute top-0.5 left-0.5 px-1 rounded bg-black/80 text-[8px] font-bold text-purple-300">
+              #${idx + 1}
+            </div>
+            <button type="button" class="btn-remove-anchor-ref absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-600/90 hover:bg-red-500 text-white flex items-center justify-center transition shadow" data-id="${asset.id}" title="Lepas Acuan">
+              <i data-lucide="x" class="w-2.5 h-2.5"></i>
+            </button>
+            <div class="absolute bottom-0 inset-x-0 bg-black/85 px-1 py-0.5 text-[8px] text-slate-300 truncate font-semibold text-center" title="${asset.title}">
+              ${asset.title}
+            </div>
+          </div>
+        `).join('')}
+        ${activeAssets.length < 5 ? `
+          <button type="button" id="btnQuickAddAsset" class="shrink-0 rounded-lg border-2 border-dashed border-dark-border hover:border-purple-500/60 bg-dark-card/40 w-14 h-20 flex flex-col items-center justify-center text-slate-400 hover:text-purple-300 transition text-[9px] font-semibold gap-1 p-1">
+            <i data-lucide="plus" class="w-4 h-4 text-purple-400"></i>
+            <span>+ Acuan (${activeAssets.length}/5)</span>
+          </button>
+        ` : ''}
+      `;
+
+      els.anchorThumbTray.querySelectorAll('.btn-remove-anchor-ref').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleAssetSelectionForScenes(btn.dataset.id);
+        });
+      });
+
+      document.getElementById('btnQuickAddAsset')?.addEventListener('click', () => {
+        switchTab('tab-asset');
+      });
+    }
+  } else if (imageRefs.length > 0) {
     if (els.anchorBadgeStatus) {
       els.anchorBadgeStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30';
-      els.anchorBadgeStatus.textContent = 'Aktif (Foto Input Fase 01)';
+      els.anchorBadgeStatus.textContent = `${imageRefs.length}/5 Foto Input Fase 01`;
     }
     if (els.anchorDescriptionText) {
-      els.anchorDescriptionText.textContent = `Menggunakan foto/frame referensi dari Fase 01 sebagai acuan visual scene.`;
+      els.anchorDescriptionText.textContent = `Menggunakan ${imageRefs.length} foto referensi terpasang dari Fase 01 sebagai acuan visual scene.`;
+    }
+    if (els.anchorThumbTray) {
+      els.anchorThumbTray.innerHTML = imageRefs.map((img, idx) => {
+        const src = img.dataUrl || `data:${img.mimeType || 'image/jpeg'};base64,${img.data}`;
+        return `
+          <div class="relative group/thumb shrink-0 rounded-lg overflow-hidden border border-blue-500/60 bg-dark-card w-14 h-20 shadow-md">
+            <img src="${src}" class="w-full h-full object-cover cursor-pointer hover:scale-105 transition" onclick="openImageModal('${src}')">
+            <div class="absolute top-0.5 left-0.5 px-1 rounded bg-black/80 text-[8px] font-bold text-blue-300">
+              #${idx + 1}
+            </div>
+            <div class="absolute bottom-0 inset-x-0 bg-black/85 px-1 py-0.5 text-[8px] text-slate-300 truncate font-semibold text-center">
+              Fase 01 (#${idx + 1})
+            </div>
+          </div>
+        `;
+      }).join('');
     }
   } else {
-    if (els.anchorThumbBox) els.anchorThumbBox.innerHTML = `<i data-lucide="layers" class="w-5 h-5 text-slate-500"></i>`;
     if (els.anchorBadgeStatus) {
       els.anchorBadgeStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-dark-card text-slate-400 border border-dark-border';
-      els.anchorBadgeStatus.textContent = 'Standby (Tanpa Anchor)';
+      els.anchorBadgeStatus.textContent = 'Standby (0/5 Asset)';
     }
     if (els.anchorDescriptionText) {
-      els.anchorDescriptionText.textContent = `Scene akan di-render mandiri. Anda bisa membuat Asset Sheet di Tab 3 untuk mengunci konsistensi karakter/objek.`;
+      els.anchorDescriptionText.textContent = `Belum ada asset aktif. Anda bisa membuat atau memilih hingga 5 asset di Section 03 untuk mengunci konsistensi karakter & objek.`;
+    }
+    if (els.anchorThumbTray) {
+      els.anchorThumbTray.innerHTML = `
+        <div class="flex items-center gap-2 py-1 px-3 rounded-lg bg-dark-card/50 border border-dashed border-dark-border text-slate-500 text-xs">
+          <i data-lucide="layers" class="w-4 h-4 text-purple-400"></i>
+          <span>Belum ada asset dipilih. Klik <strong>Kelola / Pilih Asset di Section 03</strong> untuk memilih hingga 5 acuan.</span>
+        </div>
+      `;
     }
   }
 
