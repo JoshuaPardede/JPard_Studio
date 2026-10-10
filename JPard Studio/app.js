@@ -22,6 +22,7 @@ const DEFAULT_PROJECT = {
   title: 'Untitled Daily Short',
   sourceInput: '',
   imageReference: null,
+  imageReferences: [],
   soundtrack: null,
   assetSheet: null,
   assetLibrary: [],
@@ -41,6 +42,16 @@ const DEFAULT_PROJECT = {
   ],
   diagnoses: {}
 };
+
+function getImageReferences() {
+  if (Array.isArray(state.project.imageReferences) && state.project.imageReferences.length > 0) {
+    return state.project.imageReferences;
+  }
+  if (state.project.imageReference) {
+    return [state.project.imageReference];
+  }
+  return [];
+}
 
 let savedModel = localStorage.getItem(STORAGE_KEYS.MODEL) || 'gemini-3.8-flash';
 if (!savedModel || savedModel.includes('2.5') || savedModel.includes('1.5') || savedModel.includes('2.0')) {
@@ -208,6 +219,16 @@ function initProject() {
   if (saved) {
     try {
       state.project = JSON.parse(saved);
+      // Ensure imageReferences array exists and is populated
+      if (!Array.isArray(state.project.imageReferences)) {
+        state.project.imageReferences = [];
+        if (state.project.imageReference) {
+          state.project.imageReferences.push(state.project.imageReference);
+        }
+      }
+      state.project.imageReferences.forEach((ref, idx) => {
+        if (!ref.id) ref.id = `ref_${Date.now()}_${idx}`;
+      });
       // Clean up residual auto-generated boilerplate if previously saved
       if (state.project.sourceInput && state.project.sourceInput.startsWith('Video Referensi: "')) {
         state.project.sourceInput = '';
@@ -227,6 +248,7 @@ function initProject() {
 function resetProject() {
   const now = new Date();
   state.project = JSON.parse(JSON.stringify(DEFAULT_PROJECT));
+  state.project.imageReferences = [];
   state.project.id = 'proj_' + Date.now();
   state.project.date = now.toISOString().split('T')[0];
   state.project.title = `Daily Short — ${now.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'short' })}`;
@@ -234,7 +256,25 @@ function resetProject() {
 }
 
 function saveCurrentProject() {
-  localStorage.setItem(STORAGE_KEYS.CURRENT, JSON.stringify(state.project));
+  try {
+    localStorage.setItem(STORAGE_KEYS.CURRENT, JSON.stringify(state.project));
+  } catch (err) {
+    console.warn('localStorage quota reached, keeping project in memory:', err);
+    try {
+      // If quota exceeded, trim extra asset library history from storage copy
+      const trimmed = JSON.parse(JSON.stringify(state.project));
+      if (trimmed.scenes) {
+        trimmed.scenes.forEach(s => {
+          if (s.history && s.history.length > 2) {
+            s.history = s.history.slice(-2);
+          }
+        });
+      }
+      localStorage.setItem(STORAGE_KEYS.CURRENT, JSON.stringify(trimmed));
+    } catch (e) {
+      console.warn('Cannot write to localStorage, session remains active in RAM.');
+    }
+  }
   updateSceneBadge();
 }
 
@@ -326,31 +366,39 @@ function setupEventListeners() {
     });
   });
 
-  // Tab 1: Universal Reference Ingest Hub (Drag & Drop, Paste Cmd+V, Browse)
-  els.smartDropContainer?.addEventListener('dragenter', (e) => {
+  // Drop container & textarea drop event handlers
+  const handleDropEvent = (e) => {
     e.preventDefault();
-    els.dragOverlay?.classList.remove('hidden');
-  });
+    e.stopPropagation();
+    els.dragOverlay?.classList.add('hidden');
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        processGenericReferenceFile(files[i]);
+      }
+    }
+  };
 
-  els.smartDropContainer?.addEventListener('dragover', (e) => {
+  const handleDragOverEvent = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     els.dragOverlay?.classList.remove('hidden');
-  });
+  };
 
+  els.smartDropContainer?.addEventListener('dragenter', handleDragOverEvent);
+  els.smartDropContainer?.addEventListener('dragover', handleDragOverEvent);
   els.smartDropContainer?.addEventListener('dragleave', (e) => {
     e.preventDefault();
     if (e.relatedTarget && !els.smartDropContainer.contains(e.relatedTarget)) {
       els.dragOverlay?.classList.add('hidden');
     }
   });
+  els.smartDropContainer?.addEventListener('drop', handleDropEvent);
 
-  els.smartDropContainer?.addEventListener('drop', (e) => {
-    e.preventDefault();
-    els.dragOverlay?.classList.add('hidden');
-    if (e.dataTransfer.files?.[0]) {
-      processGenericReferenceFile(e.dataTransfer.files[0]);
-    }
-  });
+  // Textarea specific drag & drop prevention
+  els.inputReference?.addEventListener('dragenter', handleDragOverEvent);
+  els.inputReference?.addEventListener('dragover', handleDragOverEvent);
+  els.inputReference?.addEventListener('drop', handleDropEvent);
 
   els.btnBrowseReferenceFile?.addEventListener('click', () => {
     els.inputImageRef?.click();
@@ -358,7 +406,12 @@ function setupEventListeners() {
 
   els.inputImageRef?.addEventListener('change', handleImageUpload);
   els.btnPasteFromClipboard?.addEventListener('click', handleClipboardButtonPaste);
+  
+  // Universal Paste Event Listeners (Window, Document, Container, Textarea)
   window.addEventListener('paste', handlePaste);
+  document.addEventListener('paste', handlePaste);
+  els.inputReference?.addEventListener('paste', handlePaste);
+  els.smartDropContainer?.addEventListener('paste', handlePaste);
 
   els.btnRemoveImage?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1128,7 +1181,8 @@ async function callGemini(promptText, systemInstruction = '', inlineDataParts = 
 // Handler: Generate Source Pack (Phase 1)
 async function handleGenerateSourcePack() {
   const input = els.inputReference.value.trim();
-  const hasImage = !!(state.project.imageReference && state.project.imageReference.data);
+  const imageRefs = getImageReferences();
+  const hasImage = imageRefs.length > 0;
 
   if (!input && !hasImage) {
     showToast('Silakan masukkan referensi teks atau upload foto referensi!');
@@ -1148,12 +1202,12 @@ async function handleGenerateSourcePack() {
 
     if (state.apiKey && state.apiKey.trim().length > 10) {
       // Live Gemini Multimodal Call
-      const sysPrompt = `You are an elite creative AI Director specialized in 60-second viral short video production. Your goal is to analyze reference material (text and/or reference image) and extract a compressed, high-density SOURCE PACK according to the Master Flow guidelines. Respond strictly with valid JSON conforming to the requested schema.`;
+      const sysPrompt = `You are an elite creative AI Director specialized in 60-second viral short video production. Your goal is to analyze reference material (text and/or reference images) and extract a compressed, high-density SOURCE PACK according to the Master Flow guidelines. Respond strictly with valid JSON conforming to the requested schema.`;
       
       const userPrompt = `Analyze this reference for a 60-second AI Short Video.
 Reference Text: "${input || '(Lihat foto referensi terlampir)'}"
 Theme constraint: "${theme}"
-${hasImage ? 'CRITICAL: A visual reference image is attached. Closely inspect the image (subject appearance, colors, lighting, textures, environment, materials, product design) and ensure the SOURCE PACK and future scenes strictly align with this visual anchor.' : ''}
+${hasImage ? `CRITICAL: ${imageRefs.length} visual reference image(s) are attached. Closely inspect all attached reference images (subject appearances, colors, lighting, textures, environment, materials, product design) and ensure the SOURCE PACK and future scenes strictly align with these visual anchors.` : ''}
 
 Extract the SOURCE PACK. Output ONLY a valid JSON object matching this exact structure:
 {
@@ -1185,10 +1239,14 @@ Extract the SOURCE PACK. Output ONLY a valid JSON object matching this exact str
 
       let inlineParts = [];
       if (hasImage) {
-        inlineParts.push({
-          inlineData: {
-            mimeType: state.project.imageReference.mimeType || 'image/jpeg',
-            data: state.project.imageReference.data
+        imageRefs.forEach(ref => {
+          if (ref.data) {
+            inlineParts.push({
+              inlineData: {
+                mimeType: ref.mimeType || 'image/jpeg',
+                data: ref.data
+              }
+            });
           }
         });
       }
@@ -1444,41 +1502,245 @@ function applyErrorPreset(type) {
 
 // ------------------------------------------
 // UNIVERSAL REFERENCE INGEST HANDLERS (TAB 1)
-// Supports Drag & Drop, Clipboard Paste (Cmd+V),
+// Supports Drag & Drop, Clipboard Paste (Cmd+V / Ctrl+V),
 // Images, Video Frame Extraction, Text, and PDF.
 // ------------------------------------------
 
-function handlePaste(e) {
-  const items = e.clipboardData?.items;
-  if (!items || items.length === 0) return;
+function isImageFile(file) {
+  if (!file) return false;
+  const type = (file.type || '').toLowerCase();
+  const name = (file.name || '').toLowerCase();
+  if (type.startsWith('image/')) return true;
+  if (name.match(/\.(png|jpe?g|webp|gif|bmp|svg|tiff?|heic|avif)$/i)) return true;
+  return false;
+}
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    if (item.type && item.type.indexOf('image') !== -1) {
-      const blob = item.getAsFile();
-      if (blob) {
-        processGenericReferenceFile(blob);
-        e.preventDefault();
-        return;
+function optimizeImageFile(file, maxWidth = 1200, maxHeight = 1200, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    if (!(file instanceof Blob)) {
+      return reject(new Error('Input bukan merupakan Blob/File yang valid.'));
+    }
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Gagal membaca file gambar.'));
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('Gagal memuat gambar ke canvas.'));
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth || height > maxHeight) {
+          const ratio = Math.min(maxWidth / width, maxHeight / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const mime = (file.type === 'image/png') ? 'image/png' : 'image/jpeg';
+        const dataUrl = canvas.toDataURL(mime, quality);
+        const base64Data = dataUrl.split(',')[1];
+        resolve({
+          dataUrl,
+          data: base64Data,
+          mimeType: mime,
+          width,
+          height
+        });
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function optimizeImageFromUrl(urlOrDataUrl, maxWidth = 1200, maxHeight = 1200, quality = 0.85) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onerror = () => reject(new Error('Gagal memuat gambar dari URL.'));
+    img.onload = () => {
+      let width = img.width;
+      let height = img.height;
+      if (width > maxWidth || height > maxHeight) {
+        const ratio = Math.min(maxWidth / width, maxHeight / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, width, height);
+
+      const mime = urlOrDataUrl.startsWith('data:image/png') ? 'image/png' : 'image/jpeg';
+      const dataUrl = canvas.toDataURL(mime, quality);
+      const base64Data = dataUrl.split(',')[1];
+      resolve({
+        dataUrl,
+        data: base64Data,
+        mimeType: mime,
+        width,
+        height
+      });
+    };
+    img.src = urlOrDataUrl;
+  });
+}
+
+function addImageReference(refItem) {
+  if (!refItem) return;
+  if (!Array.isArray(state.project.imageReferences)) {
+    state.project.imageReferences = [];
+    if (state.project.imageReference) {
+      state.project.imageReferences.push(state.project.imageReference);
+    }
+  }
+
+  // Prevent duplicate by id or name & dataUrl
+  const existingIdx = state.project.imageReferences.findIndex(r => 
+    r.id === refItem.id || (r.name === refItem.name && r.dataUrl === refItem.dataUrl)
+  );
+  if (existingIdx !== -1) {
+    state.project.imageReferences[existingIdx] = refItem;
+  } else {
+    state.project.imageReferences.push(refItem);
+  }
+
+  state.project.imageReference = state.project.imageReferences[0] || null;
+
+  saveCurrentProject();
+  renderImageRefUI();
+  renderAnchorBannerUI();
+}
+
+async function loadImageFromUrlOrData(urlOrData, fileName = 'clipboard_image.png') {
+  showToast('Memuat foto dari clipboard...');
+  const refId = `ref_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  try {
+    const optimized = await optimizeImageFromUrl(urlOrData);
+    const newRef = {
+      id: refId,
+      name: fileName,
+      size: Math.round(optimized.dataUrl.length * 0.75),
+      mimeType: optimized.mimeType,
+      dataUrl: optimized.dataUrl,
+      data: optimized.data,
+      type: 'image'
+    };
+    addImageReference(newRef);
+    showToast(`📸 Foto referensi ditambahkan! (Total: ${state.project.imageReferences.length})`);
+  } catch (err) {
+    console.warn('Fallback direct image loader:', err);
+    const newRef = {
+      id: refId,
+      name: fileName,
+      size: urlOrData.length,
+      mimeType: 'image/jpeg',
+      dataUrl: urlOrData,
+      data: urlOrData.includes(',') ? urlOrData.split(',')[1] : '',
+      type: 'image'
+    };
+    addImageReference(newRef);
+    showToast(`📸 Foto referensi ditambahkan! (Total: ${state.project.imageReferences.length})`);
+  }
+}
+
+function handlePaste(e) {
+  const clipboardData = e.clipboardData || window.clipboardData;
+  if (!clipboardData) return;
+
+  // 1. Cek e.clipboardData.files (file gambar yang di-copy dari Finder / Desktop Mac)
+  const files = clipboardData.files;
+  if (files && files.length > 0) {
+    let handled = false;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (isImageFile(file)) {
+        processGenericReferenceFile(file);
+        handled = true;
+      } else if (file.type.startsWith('video/') || file.name.match(/\.(mp4|webm|mov|mkv)$/i) ||
+          file.type === 'application/pdf' || file.name.endsWith('.pdf') ||
+          file.name.match(/\.(txt|md|json|csv)$/i)) {
+        processGenericReferenceFile(file);
+        handled = true;
+      }
+    }
+    if (handled) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+  }
+
+  // 2. Cek e.clipboardData.items (screenshot langsung ke clipboard / copy paste objek)
+  const items = clipboardData.items;
+  if (items && items.length > 0) {
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.kind === 'file' || (item.type && item.type.startsWith('image/'))) {
+        const blob = item.getAsFile();
+        if (blob && (isImageFile(blob) || (item.type && item.type.startsWith('image/')))) {
+          e.preventDefault();
+          e.stopPropagation();
+          processGenericReferenceFile(blob);
+          return;
+        }
       }
     }
   }
 
-  // If pasting plain text from clipboard outside the textarea
-  if (document.activeElement !== els.inputReference) {
-    const text = e.clipboardData.getData('text');
-    if (text && text.trim().length > 0) {
-      els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + text.trim();
-      state.project.sourceInput = els.inputReference.value;
-      saveCurrentProject();
-      showToast('📋 Teks dari Clipboard berhasil ditambahkan!');
+  // 3. Cek text/html (misal copy gambar dari browser / website yang menyalin tag <img>)
+  const html = clipboardData.getData('text/html');
+  if (html) {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const img = doc.querySelector('img');
+      if (img && img.src && (img.src.startsWith('data:image/') || img.src.startsWith('http') || img.src.startsWith('blob:'))) {
+        e.preventDefault();
+        e.stopPropagation();
+        loadImageFromUrlOrData(img.src, 'clipboard_web_image.png');
+        return;
+      }
+    } catch (err) {
+      console.warn('HTML clipboard parser notice:', err);
     }
+  }
+
+  // 4. Cek text/plain (jika berupa URL gambar langsung atau data:image base64)
+  const plainText = clipboardData.getData('text/plain')?.trim();
+  if (plainText) {
+    if (plainText.startsWith('data:image/')) {
+      e.preventDefault();
+      e.stopPropagation();
+      loadImageFromUrlOrData(plainText, 'clipboard_data_image.png');
+      return;
+    }
+    if (plainText.match(/^https?:\/\/.+\.(png|jpe?g|webp|gif|svg|avif)(\?.*)?$/i)) {
+      e.preventDefault();
+      e.stopPropagation();
+      loadImageFromUrlOrData(plainText, 'clipboard_image_link.png');
+      return;
+    }
+  }
+
+  // 5. Teks biasa di luar textarea input
+  if (document.activeElement !== els.inputReference && plainText && plainText.length > 0) {
+    e.preventDefault();
+    els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + plainText;
+    state.project.sourceInput = els.inputReference.value;
+    saveCurrentProject();
+    showToast('📋 Teks dari Clipboard berhasil ditambahkan!');
   }
 }
 
 async function handleClipboardButtonPaste() {
-  try {
-    if (navigator.clipboard?.read) {
+  // 1. Coba baca image blob dari Clipboard API modern
+  if (navigator.clipboard?.read) {
+    try {
       const items = await navigator.clipboard.read();
       for (const item of items) {
         for (const type of item.types) {
@@ -1489,60 +1751,97 @@ async function handleClipboardButtonPaste() {
           }
         }
       }
+    } catch (err) {
+      console.warn('navigator.clipboard.read notice:', err);
     }
-
-    const text = await navigator.clipboard.readText();
-    if (text && text.trim().length > 0) {
-      els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + text.trim();
-      state.project.sourceInput = els.inputReference.value;
-      saveCurrentProject();
-      showToast('📋 Teks dari Clipboard berhasil dimasukkan!');
-    } else {
-      showToast('Clipboard kosong atau tidak berisi teks/gambar.');
-    }
-  } catch (err) {
-    console.warn(err);
-    showToast('Silakan tekan tombol Cmd+V / Ctrl+V untuk menempel dari Clipboard.');
   }
+
+  // 2. Coba baca text / URL gambar dari clipboard
+  if (navigator.clipboard?.readText) {
+    try {
+      const text = (await navigator.clipboard.readText() || '').trim();
+      if (text.startsWith('data:image/')) {
+        loadImageFromUrlOrData(text, 'clipboard_data_image.png');
+        return;
+      }
+      if (text.match(/^https?:\/\/.+\.(png|jpe?g|webp|gif|svg|avif)(\?.*)?$/i)) {
+        loadImageFromUrlOrData(text, 'clipboard_image_link.png');
+        return;
+      }
+      if (text.length > 0) {
+        els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + text;
+        state.project.sourceInput = els.inputReference.value;
+        saveCurrentProject();
+        showToast('📋 Teks dari Clipboard berhasil dimasukkan!');
+        return;
+      }
+    } catch (err) {
+      console.warn('navigator.clipboard.readText notice:', err);
+    }
+  }
+
+  // 3. Panduan ramah jika clipboard akses dibatasi oleh browser
+  showToast('💡 Klik kolom input, lalu tekan Cmd+V (Mac) atau Ctrl+V untuk menempel foto!');
 }
 
 function handleImageUpload(e) {
-  const file = e.target.files?.[0];
-  if (file) {
-    processGenericReferenceFile(file);
+  const files = e.target.files;
+  if (files && files.length > 0) {
+    for (let i = 0; i < files.length; i++) {
+      processGenericReferenceFile(files[i]);
+    }
   }
+  e.target.value = '';
 }
 
-function processGenericReferenceFile(file) {
+async function processGenericReferenceFile(file) {
   if (!file) return;
 
   const fileName = file.name || `clipboard_image_${Date.now()}.png`;
-  const fileType = file.type || '';
+  const fileType = (file.type || '').toLowerCase();
+  const refId = `ref_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
 
-  // 1. Image Files
-  if (fileType.startsWith('image/')) {
-    if (file.size > 15 * 1024 * 1024) {
-      showToast('Ukuran gambar maksimal 15MB.');
+  // 1. Image Files (Cek MIME type ATAU ekstensi file ATAU isImageFile)
+  if (isImageFile(file) || fileType.startsWith('image/')) {
+    if (file.size > 25 * 1024 * 1024) {
+      showToast('Ukuran gambar maksimal 25MB.');
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target.result;
-      const base64Data = dataUrl.split(',')[1];
-      state.project.imageReference = {
+
+    showToast('Memproses foto referensi...');
+    try {
+      const optimized = await optimizeImageFile(file);
+      const newRef = {
+        id: refId,
         name: fileName,
-        size: file.size,
-        mimeType: fileType || 'image/png',
-        dataUrl: dataUrl,
-        data: base64Data,
+        size: Math.round(optimized.dataUrl.length * 0.75),
+        mimeType: optimized.mimeType,
+        dataUrl: optimized.dataUrl,
+        data: optimized.data,
         type: 'image'
       };
-      saveCurrentProject();
-      renderImageRefUI();
-      renderAnchorBannerUI();
-      showToast(`📸 Foto referensi visual "${fileName}" berhasil dimuat!`);
-    };
-    reader.readAsDataURL(file);
+      addImageReference(newRef);
+      showToast(`📸 Foto "${fileName}" ditambahkan! (Total: ${state.project.imageReferences.length})`);
+    } catch (err) {
+      console.warn('Optimasi gagal, menggunakan pembacaan langsung:', err);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const dataUrl = event.target.result;
+        const base64Data = dataUrl.split(',')[1];
+        const newRef = {
+          id: refId,
+          name: fileName,
+          size: file.size || dataUrl.length,
+          mimeType: fileType || 'image/png',
+          dataUrl: dataUrl,
+          data: base64Data,
+          type: 'image'
+        };
+        addImageReference(newRef);
+        showToast(`📸 Foto "${fileName}" ditambahkan! (Total: ${state.project.imageReferences.length})`);
+      };
+      reader.readAsDataURL(file);
+    }
     return;
   }
 
@@ -1567,10 +1866,11 @@ function processGenericReferenceFile(file) {
         canvas.height = video.videoHeight || 1280;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
         URL.revokeObjectURL(url);
 
-        state.project.imageReference = {
+        const newRef = {
+          id: refId,
           name: fileName,
           size: file.size,
           mimeType: 'image/jpeg',
@@ -1578,11 +1878,8 @@ function processGenericReferenceFile(file) {
           data: dataUrl.split(',')[1],
           type: 'video_frame'
         };
-
-        saveCurrentProject();
-        renderImageRefUI();
-        renderAnchorBannerUI();
-        showToast('🎬 Frame video berhasil dimuat sebagai acuan visual!');
+        addImageReference(newRef);
+        showToast(`🎬 Frame video "${fileName}" ditambahkan! (Total: ${state.project.imageReferences.length})`);
       } catch (err) {
         console.error(err);
         showToast('Gagal mengekstrak frame dari video.');
@@ -1638,17 +1935,32 @@ function processImageFile(file) {
   processGenericReferenceFile(file);
 }
 
-function removeImageRef() {
-  state.project.imageReference = null;
-  if (els.inputImageRef) els.inputImageRef.value = '';
-  if (els.inputReference && els.inputReference.value.startsWith('Video Referensi: "')) {
-    els.inputReference.value = '';
-    state.project.sourceInput = '';
+function removeImageRef(idToRemove = null) {
+  if (!Array.isArray(state.project.imageReferences)) {
+    state.project.imageReferences = [];
+    if (state.project.imageReference) state.project.imageReferences.push(state.project.imageReference);
   }
+
+  if (idToRemove) {
+    state.project.imageReferences = state.project.imageReferences.filter(item => item.id !== idToRemove);
+  } else {
+    state.project.imageReferences = [];
+  }
+
+  state.project.imageReference = state.project.imageReferences[0] || null;
+
+  if (state.project.imageReferences.length === 0) {
+    if (els.inputImageRef) els.inputImageRef.value = '';
+    if (els.inputReference && els.inputReference.value.startsWith('Video Referensi: "')) {
+      els.inputReference.value = '';
+      state.project.sourceInput = '';
+    }
+  }
+
   saveCurrentProject();
   renderImageRefUI();
   renderAnchorBannerUI();
-  showToast('Gambar referensi dihapus.');
+  showToast(idToRemove ? '1 foto referensi dihapus.' : 'Semua foto referensi dihapus.');
 }
 
 // ------------------------------------------
@@ -2532,14 +2844,35 @@ function updateSceneBadge() {
 }
 
 function renderImageRefUI() {
-  const imgRef = state.project.imageReference;
-  if (imgRef && imgRef.dataUrl) {
-    if (els.attachedMediaTray) els.attachedMediaTray.classList.remove('hidden');
-    if (els.imagePreviewImg) els.imagePreviewImg.src = imgRef.dataUrl;
+  const imageRefs = getImageReferences();
+  if (imageRefs.length > 0) {
+    if (els.attachedMediaTray) {
+      els.attachedMediaTray.classList.remove('hidden');
+      els.attachedMediaTray.classList.add('flex');
+      els.attachedMediaTray.innerHTML = imageRefs.map((item) => `
+        <div class="relative group/thumb shrink-0" data-id="${item.id}">
+          <img src="${item.dataUrl}" alt="${item.name || 'Referensi'}" class="w-16 h-16 object-cover rounded-xl border border-dark-border shadow-md hover:border-orange-500/70 transition" title="${item.name || 'Foto Referensi'}">
+          <button type="button" class="btn-remove-single-ref absolute -top-1.5 -right-1.5 p-1 rounded-full bg-red-600 hover:bg-red-500 text-white shadow-lg transition" data-id="${item.id}" title="Hapus foto ini">
+            <i data-lucide="x" class="w-3 h-3"></i>
+          </button>
+        </div>
+      `).join('');
+
+      els.attachedMediaTray.querySelectorAll('.btn-remove-single-ref').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          removeImageRef(btn.dataset.id);
+        });
+      });
+    }
   } else {
-    if (els.attachedMediaTray) els.attachedMediaTray.classList.add('hidden');
-    if (els.imagePreviewImg) els.imagePreviewImg.src = '';
+    if (els.attachedMediaTray) {
+      els.attachedMediaTray.classList.add('hidden');
+      els.attachedMediaTray.classList.remove('flex');
+      els.attachedMediaTray.innerHTML = '';
+    }
   }
+  lucide.createIcons();
 }
 
 function renderSourcePackUI() {
@@ -2844,7 +3177,8 @@ function renderAssetLibraryUI() {
 
 function renderAnchorBannerUI() {
   const as = state.project.assetSheet;
-  const imgRef = state.project.imageReference;
+  const imageRefs = getImageReferences();
+  const primaryImg = imageRefs[0];
   const isSeq = state.project.sequentialChaining !== false;
 
   if (as && as.imageData && as.isAnchorActive !== false) {
@@ -2858,15 +3192,19 @@ function renderAnchorBannerUI() {
         ? `Asset Sheet ini menjadi acuan awal Scene 01, dilanjutkan secara Sequential Chain (Scene 1 ➔ 2 ➔ ... ➔ 6 Loop).`
         : `Google Gemini Banana Pro mengunci konsistensi Scene 1-6 dengan acuan visual Asset Sheet ini.`;
     }
-  } else if (imgRef && (imgRef.dataUrl || imgRef.data)) {
-    const src = imgRef.dataUrl || `data:${imgRef.mimeType || 'image/jpeg'};base64,${imgRef.data}`;
+  } else if (primaryImg && (primaryImg.dataUrl || primaryImg.data)) {
+    const src = primaryImg.dataUrl || `data:${primaryImg.mimeType || 'image/jpeg'};base64,${primaryImg.data}`;
     if (els.anchorThumbBox) els.anchorThumbBox.innerHTML = `<img src="${src}" class="w-full h-full object-cover">`;
     if (els.anchorBadgeStatus) {
       els.anchorBadgeStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30';
-      els.anchorBadgeStatus.textContent = 'Aktif (Foto Input Fase 01)';
+      els.anchorBadgeStatus.textContent = imageRefs.length > 1 
+        ? `Aktif (${imageRefs.length} Foto Input Fase 01)` 
+        : 'Aktif (Foto Input Fase 01)';
     }
     if (els.anchorDescriptionText) {
-      els.anchorDescriptionText.textContent = `Menggunakan foto/frame referensi dari Fase 01 sebagai acuan visual scene.`;
+      els.anchorDescriptionText.textContent = imageRefs.length > 1
+        ? `Menggunakan ${imageRefs.length} foto referensi terpasang dari Fase 01 sebagai acuan visual scene.`
+        : `Menggunakan foto/frame referensi dari Fase 01 sebagai acuan visual scene.`;
     }
   } else {
     if (els.anchorThumbBox) els.anchorThumbBox.innerHTML = `<i data-lucide="layers" class="w-5 h-5 text-slate-500"></i>`;
