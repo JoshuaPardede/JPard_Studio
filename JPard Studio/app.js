@@ -149,6 +149,8 @@ const els = {
   assetVersionReel: document.getElementById('assetVersionReel'),
   assetLibrarySection: document.getElementById('assetLibrarySection'),
   assetLibraryCountBadge: document.getElementById('assetLibraryCountBadge'),
+  assetActiveCountBadge: document.getElementById('assetActiveCountBadge'),
+  assetActiveCountText: document.getElementById('assetActiveCountText'),
   btnUploadToAssetLibrary: document.getElementById('btnUploadToAssetLibrary'),
   inputAssetLibraryUpload: document.getElementById('inputAssetLibraryUpload'),
   assetLibraryGrid: document.getElementById('assetLibraryGrid'),
@@ -165,6 +167,7 @@ const els = {
   // Tab 4: Scenes
   anchorActiveBanner: document.getElementById('anchorActiveBanner'),
   anchorThumbBox: document.getElementById('anchorThumbBox'),
+  anchorThumbTray: document.getElementById('anchorThumbTray'),
   anchorBadgeStatus: document.getElementById('anchorBadgeStatus'),
   anchorDescriptionText: document.getElementById('anchorDescriptionText'),
   btnJumpToAssetTab: document.getElementById('btnJumpToAssetTab'),
@@ -2048,7 +2051,76 @@ async function handleGenerateSoundtrack() {
 // Model: gemini-3.1-flash-image
 // ------------------------------------------
 
-async function callImageGeneration(promptText, aspectRatio = '9:16', referenceImage = null) {
+// Helper: Get up to 5 selected active assets from Section 3
+function getSelectedAssetReferences() {
+  if (!state.project) return [];
+  const library = state.project.assetLibrary || [];
+  let selected = library.filter(a => a.selectedForScenes);
+
+  // Fallback for existing/legacy projects: If none marked selectedForScenes, pick up to 5
+  if (selected.length === 0) {
+    if (library.length > 0) {
+      const primary = library.find(a => a.isPrimary) || library[0];
+      if (primary) {
+        primary.selectedForScenes = true;
+        selected = [primary];
+      }
+    } else if (state.project.assetSheet?.imageData && state.project.assetSheet?.isAnchorActive !== false) {
+      selected = [{
+        id: state.project.assetSheet.currentVersionId || 'as_primary',
+        title: state.project.assetSheet.title || 'Asset Anchor Sheet',
+        type: state.project.assetSheet.type || 'character',
+        imageData: state.project.assetSheet.imageData,
+        selectedForScenes: true
+      }];
+    }
+  }
+
+  return selected.slice(0, 5);
+}
+
+function toggleAssetSelectionForScenes(assetId) {
+  if (!state.project.assetLibrary) state.project.assetLibrary = [];
+  const asset = state.project.assetLibrary.find(a => a.id === assetId);
+  if (!asset) return;
+
+  const currentSelected = state.project.assetLibrary.filter(a => a.selectedForScenes);
+
+  if (asset.selectedForScenes) {
+    asset.selectedForScenes = false;
+    asset.isPrimary = false;
+    showToast(`Asset "${asset.title}" dilepas dari acuan Section 4.`);
+  } else {
+    if (currentSelected.length >= 5) {
+      showToast('⚠️ Maksimal 5 asset yang dapat dijadikan acuan di Section 4! Lepas salah satu asset terlebih dahulu.');
+      return;
+    }
+    asset.selectedForScenes = true;
+    showToast(`✓ Asset "${asset.title}" (${currentSelected.length + 1}/5) aktif sebagai acuan Section 4!`);
+  }
+
+  // Update primary assetSheet preview with the first selected asset
+  const activeList = getSelectedAssetReferences();
+  if (activeList.length > 0) {
+    const topAsset = activeList[0];
+    if (!state.project.assetSheet) {
+      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+    }
+    state.project.assetSheet.imageData = topAsset.imageData;
+    state.project.assetSheet.title = topAsset.title;
+    state.project.assetSheet.isAnchorActive = true;
+    state.project.assetSheet.currentVersionId = topAsset.id;
+  } else if (state.project.assetSheet) {
+    state.project.assetSheet.isAnchorActive = false;
+  }
+
+  saveCurrentProject();
+  renderAssetLibraryUI();
+  renderAnchorBannerUI();
+  renderScenesUI();
+}
+
+async function callImageGeneration(promptText, aspectRatio = '9:16', referenceImages = null) {
   if (!state.apiKey || state.apiKey.trim().length < 10) {
     showToast('⚠️ Masukkan Google Gemini API Key di menu Pengaturan (ikon Gear)!');
     openSettings();
@@ -2063,28 +2135,39 @@ async function callImageGeneration(promptText, aspectRatio = '9:16', referenceIm
 
   const apiKey = state.apiKey.trim();
 
+  // Normalize referenceImages into an array of up to 5 images
+  let refList = [];
+  if (Array.isArray(referenceImages)) {
+    refList = referenceImages.filter(Boolean);
+  } else if (referenceImages) {
+    refList = [referenceImages];
+  }
+  // Clamp to max 5 references
+  refList = refList.slice(0, 5);
+
   // Primary Call: Google Gemini Banana Pro via official Interactions API
   const interactionsEndpoint = `https://generativelanguage.googleapis.com/v1beta/interactions`;
   
   let inputPayload;
-  if (referenceImage) {
-    const rawBase64 = referenceImage.startsWith('data:') 
-      ? referenceImage.split(',')[1] 
-      : referenceImage;
-    const mime = referenceImage.startsWith('data:')
-      ? (referenceImage.split(';')[0].replace('data:', '') || 'image/jpeg')
-      : 'image/jpeg';
+  if (refList.length > 0) {
+    const textPrompt = refList.length === 1 
+      ? `Create the scene master frame adhering to this prompt: ${cleanPrompt}. Maintain exact subject appearance, character design, materials, and lighting consistency from the reference image attached.`
+      : `Create the scene master frame adhering to this prompt: ${cleanPrompt}. Maintain exact subject identity, character consistency, clothing, object details, colors, textures, and lighting matching the ${refList.length} attached visual reference assets.`;
 
     inputPayload = [
       {
         type: 'text',
-        text: `Create the scene master frame adhering to this prompt: ${cleanPrompt}. Maintain exact subject appearance, character design, materials, and lighting consistency from the reference image attached.`
+        text: textPrompt
       },
-      {
-        type: 'image',
-        data: rawBase64,
-        mime_type: mime
-      }
+      ...refList.map(ref => {
+        const rawBase64 = ref.startsWith('data:') ? ref.split(',')[1] : ref;
+        const mime = ref.startsWith('data:') ? (ref.split(';')[0].replace('data:', '') || 'image/jpeg') : 'image/jpeg';
+        return {
+          type: 'image',
+          data: rawBase64,
+          mime_type: mime
+        };
+      })
     ];
   } else {
     inputPayload = cleanPrompt;
@@ -2191,58 +2274,96 @@ function getSceneReference(sceneNum) {
   const isSequential = state.project.sequentialChaining !== false;
   const scenes = state.project.scenes || [];
   
-  // Tab 3 Active Asset Reference (or Tab 1 image fallback)
-  const assetAnchor = (state.project.assetSheet?.isAnchorActive !== false && state.project.assetSheet?.imageData)
-    ? state.project.assetSheet.imageData
-    : (state.project.imageReference?.dataUrl || null);
-  const assetTitle = state.project.assetSheet?.title || 'Asset Anchor Sheet';
+  // Tab 3 Active Asset References (up to 5 assets)
+  const activeAssets = getSelectedAssetReferences(); // array of up to 5 items
+  const assetImages = activeAssets.map(a => a.imageData).filter(Boolean);
+  const assetTitles = activeAssets.map(a => a.title);
 
-  // SCENE 1: Always anchors from Asset Sheet (or Tab 1 reference image)
+  // Fallback to Tab 1 image references if no Section 3 assets are active
+  let baseImages = assetImages;
+  let baseLabel = '';
+  if (baseImages.length === 0) {
+    const tab1Refs = getImageReferences();
+    if (tab1Refs.length > 0) {
+      baseImages = tab1Refs.map(r => r.dataUrl || `data:${r.mimeType || 'image/jpeg'};base64,${r.data}`).filter(Boolean).slice(0, 5);
+      baseLabel = `${baseImages.length} Foto Input Fase 01`;
+    }
+  } else {
+    baseLabel = `${activeAssets.length} Asset Sheet (${assetTitles.join(', ')})`;
+  }
+
+  // SCENE 1: Always anchors from all active Section 3 assets (or Tab 1 images)
   if (!isSequential || sceneNum === 1) {
     return {
-      image: assetAnchor,
-      label: assetAnchor ? (state.project.assetSheet?.imageData ? `Asset Sheet (${assetTitle})` : 'Foto Referensi Fase 01') : 'Mandiri (Tanpa Reference)',
+      images: baseImages.slice(0, 5),
+      image: baseImages[0] || null,
+      label: baseImages.length > 0 ? baseLabel : 'Mandiri (Tanpa Reference)',
       isLoop: false,
-      sourceType: 'asset'
+      sourceType: 'assets'
     };
   }
 
-  // SCENES 2, 3, 4, 5: Reference the immediate previous Scene (Scene N-1)
+  // SCENES 2, 3, 4, 5: Reference the immediate previous Scene (Scene N-1) PLUS active Section 3 assets
   if (sceneNum >= 2 && sceneNum <= 5) {
     const prevScene = scenes.find(s => s.number === sceneNum - 1);
     if (prevScene && prevScene.imageUrl) {
+      // Combine: previous scene image (priority 1) + up to 4 active Section 3 assets = max 5 images
+      const combined = [prevScene.imageUrl, ...baseImages.slice(0, 4)];
+      const assetCount = combined.length - 1;
+      const refText = assetCount > 0 
+        ? `Scene 0${sceneNum - 1} + ${assetCount} Asset Sheet (${assetTitles.slice(0, assetCount).join(', ')})`
+        : `Master Frame Scene 0${sceneNum - 1} (Sequential Chain)`;
+
       return {
+        images: combined,
         image: prevScene.imageUrl,
-        label: `Master Frame Scene 0${sceneNum - 1} (Sequential Chain)`,
+        label: refText,
         isLoop: false,
-        sourceType: 'previous_scene'
+        sourceType: 'previous_scene_and_assets'
       };
     }
     // Fallback if previous scene has not been generated yet
     return {
-      image: assetAnchor,
-      label: assetAnchor ? `${assetTitle} (Standby Scene 0${sceneNum - 1})` : 'Mandiri (Tanpa Reference)',
+      images: baseImages.slice(0, 5),
+      image: baseImages[0] || null,
+      label: baseImages.length > 0 ? `${baseLabel} (Standby Scene 0${sceneNum - 1})` : 'Mandiri (Tanpa Reference)',
       isLoop: false,
-      sourceType: 'fallback_asset'
+      sourceType: 'fallback_assets'
     };
   }
 
-  // SCENE 6 (ENDING / LOOP): References Scene 5 AND transitions seamlessly back to Scene 1
+  // SCENE 6 (ENDING / LOOP): References Scene 5, Scene 1 (Loop Target), PLUS active Section 3 assets
   if (sceneNum === 6) {
     const scene5 = scenes.find(s => s.number === 5);
     const scene1 = scenes.find(s => s.number === 1);
-    const prevImage = scene5?.imageUrl || assetAnchor;
+    const prevImg = scene5?.imageUrl || baseImages[0];
+    const loopTarget = scene1?.imageUrl || null;
+
+    const combined = [];
+    if (prevImg) combined.push(prevImg);
+    if (loopTarget && !combined.includes(loopTarget)) combined.push(loopTarget);
+    // Add active assets up to 5 total images
+    for (const img of baseImages) {
+      if (combined.length < 5 && !combined.includes(img)) combined.push(img);
+    }
 
     return {
-      image: prevImage,
-      label: scene5?.imageUrl ? `Scene 05 ➔ Loop Match ke Scene 01` : `${assetTitle} ➔ Loop Match ke Scene 01`,
+      images: combined,
+      image: prevImg || null,
+      label: scene5?.imageUrl ? `Scene 05 ➔ Loop Match ke Scene 01 + Asset Anchor` : `${baseLabel} ➔ Loop Match ke Scene 01`,
       isLoop: true,
       sourceType: 'loop_chain',
-      loopTargetImage: scene1?.imageUrl || null
+      loopTargetImage: loopTarget
     };
   }
 
-  return { image: assetAnchor, label: assetTitle, isLoop: false, sourceType: 'asset' };
+  return {
+    images: baseImages.slice(0, 5),
+    image: baseImages[0] || null,
+    label: baseLabel || 'Asset Anchor',
+    isLoop: false,
+    sourceType: 'assets'
+  };
 }
 
 async function generateSceneImage(sceneNum) {
@@ -2261,14 +2382,15 @@ async function generateSceneImage(sceneNum) {
   const refInfo = getSceneReference(sceneNum);
 
   if (canvasEl) {
+    const imgCount = refInfo.images?.length || (refInfo.image ? 1 : 0);
     canvasEl.innerHTML = `
       <div class="w-full h-full min-h-[360px] rounded-xl animate-shimmer flex flex-col items-center justify-center p-6 text-center space-y-3 bg-[#06080d]">
         <div class="w-10 h-10 rounded-full border-2 border-amber-400 border-t-transparent animate-spin"></div>
         <div class="text-xs font-bold text-amber-300">Google Gemini Banana Pro Rendering...</div>
         <div class="text-[10px] text-slate-400 font-mono">gemini-3.1-flash-image • 9:16 Vertical</div>
-        ${refInfo.image ? `
-          <div class="text-[10px] text-amber-300 font-semibold px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 flex items-center gap-1">
-            <span>🔗 Acuan: ${refInfo.label}</span>
+        ${imgCount > 0 ? `
+          <div class="text-[10px] text-amber-300 font-semibold px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/30 flex items-center gap-1.5 max-w-xs mx-auto text-left">
+            <span>🔗 Acuan: ${refInfo.label} (${imgCount} Asset/Frame)</span>
           </div>
         ` : ''}
       </div>
@@ -2286,7 +2408,7 @@ async function generateSceneImage(sceneNum) {
   }
 
   try {
-    const imgUrl = await callImageGeneration(dynamicPrompt, '9:16', refInfo.image);
+    const imgUrl = await callImageGeneration(dynamicPrompt, '9:16', refInfo.images || refInfo.image);
 
     // Save into Scene History Bank (v1, v2, v3...) for instant rollback
     if (!scene.history) scene.history = [];
@@ -2393,7 +2515,7 @@ function resetAssetPrompt() {
   showToast('Prompt Asset Sheet direset ke format optimal!');
 }
 
-function handleCustomAssetUpload(e) {
+async function handleCustomAssetUpload(e) {
   const file = e.target.files?.[0];
   if (!file) return;
   if (!file.type.startsWith('image/')) {
@@ -2401,118 +2523,131 @@ function handleCustomAssetUpload(e) {
     return;
   }
   const reader = new FileReader();
-  reader.onload = (event) => {
-    const dataUrl = event.target.result;
-    if (!state.project.assetSheet) {
-      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+  reader.onload = async (event) => {
+    try {
+      const rawUrl = event.target.result;
+      const dataUrl = await compressImageIfNeeded(rawUrl);
+      if (!state.project.assetSheet) {
+        state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+      }
+      state.project.assetSheet.imageData = dataUrl;
+      state.project.assetSheet.isAnchorActive = true;
+
+      // Push into version history
+      if (!state.project.assetSheet.history) state.project.assetSheet.history = [];
+      const verNum = state.project.assetSheet.history.length + 1;
+      const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+      const newVer = {
+        id: `as_v${verNum}_${Date.now()}`,
+        version: verNum,
+        imageData: dataUrl,
+        createdAt: timeStr,
+        prompt: 'Custom Upload',
+        type: state.project.assetSheet.type || 'character'
+      };
+      state.project.assetSheet.history.push(newVer);
+      state.project.assetSheet.currentVersionId = newVer.id;
+
+      // Save to Bank Asset & Galeri Referensi
+      if (!state.project.assetLibrary) state.project.assetLibrary = [];
+      const activeCount = state.project.assetLibrary.filter(a => a.selectedForScenes).length;
+      const shouldSelect = activeCount < 5;
+
+      state.project.assetLibrary.unshift({
+        id: newVer.id,
+        title: `${file.name.replace(/\.[^/.]+$/, "")} (Upload)`,
+        type: state.project.assetSheet.type || 'character',
+        imageData: dataUrl,
+        createdAt: timeStr,
+        prompt: 'Custom Upload',
+        selectedForScenes: shouldSelect,
+        isPrimary: shouldSelect && activeCount === 0
+      });
+
+      saveCurrentProject();
+      renderAssetSheetUI();
+      renderAssetLibraryUI();
+      renderAnchorBannerUI();
+      renderScenesUI();
+      showToast('Gambar custom berhasil diunggah & disimpan di Bank Asset sebagai Visual Anchor!');
+    } catch (err) {
+      console.error(err);
+      showToast(`Gagal upload asset: ${err.message}`);
     }
-    state.project.assetSheet.imageData = dataUrl;
-    state.project.assetSheet.isAnchorActive = true;
-
-    // Push into version history
-    if (!state.project.assetSheet.history) state.project.assetSheet.history = [];
-    const verNum = state.project.assetSheet.history.length + 1;
-    const newVer = {
-      id: `as_v${verNum}_${Date.now()}`,
-      version: verNum,
-      imageData: dataUrl,
-      createdAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-      prompt: 'Custom Upload',
-      type: state.project.assetSheet.type || 'character'
-    };
-    state.project.assetSheet.history.push(newVer);
-    state.project.assetSheet.currentVersionId = newVer.id;
-
-    // Save to Bank Asset & Galeri Referensi
-    if (!state.project.assetLibrary) state.project.assetLibrary = [];
-    state.project.assetLibrary.forEach(a => a.isPrimary = false);
-    state.project.assetLibrary.unshift({
-      id: newVer.id,
-      title: `${file.name} (Upload)`,
-      type: state.project.assetSheet.type || 'character',
-      imageData: dataUrl,
-      createdAt: newVer.createdAt,
-      prompt: 'Custom Upload',
-      isPrimary: true
-    });
-
-    saveCurrentProject();
-    renderAssetSheetUI();
-    renderAnchorBannerUI();
-    showToast('Gambar custom berhasil diunggah & disimpan di Bank Asset sebagai Visual Anchor!');
   };
   reader.readAsDataURL(file);
 }
 
-function handleAssetLibraryUpload(e) {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  if (!file.type.startsWith('image/')) {
-    showToast('Harap pilih file gambar (.jpg, .png, .webp)!');
-    return;
+async function handleAssetLibraryUpload(e) {
+  const files = Array.from(e.target.files || []);
+  if (files.length === 0) return;
+
+  for (const file of files) {
+    if (!file.type.startsWith('image/')) continue;
+
+    await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const rawUrl = event.target.result;
+          const dataUrl = await compressImageIfNeeded(rawUrl);
+          const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+          const assetId = `lib_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+
+          if (!state.project.assetLibrary) state.project.assetLibrary = [];
+          const activeCount = state.project.assetLibrary.filter(a => a.selectedForScenes).length;
+          const shouldSelect = activeCount < 5;
+
+          const newAsset = {
+            id: assetId,
+            title: file.name.replace(/\.[^/.]+$/, ""),
+            type: 'character',
+            imageData: dataUrl,
+            createdAt: timeStr,
+            prompt: 'Direct Bank Upload',
+            selectedForScenes: shouldSelect,
+            isPrimary: shouldSelect && activeCount === 0
+          };
+          state.project.assetLibrary.unshift(newAsset);
+
+          // If first active asset, sync to assetSheet preview
+          if (shouldSelect && activeCount === 0) {
+            if (!state.project.assetSheet) {
+              state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+            }
+            state.project.assetSheet.imageData = dataUrl;
+            state.project.assetSheet.title = newAsset.title;
+            state.project.assetSheet.isAnchorActive = true;
+            state.project.assetSheet.currentVersionId = assetId;
+          }
+        } catch (err) {
+          console.error(err);
+        }
+        resolve();
+      };
+      reader.readAsDataURL(file);
+    });
   }
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    const dataUrl = event.target.result;
-    const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-    const assetId = `lib_${Date.now()}`;
 
-    if (!state.project.assetLibrary) state.project.assetLibrary = [];
-    state.project.assetLibrary.forEach(a => a.isPrimary = false);
-
-    const newAsset = {
-      id: assetId,
-      title: file.name.replace(/\.[^/.]+$/, ""),
-      type: 'character',
-      imageData: dataUrl,
-      createdAt: timeStr,
-      prompt: 'Direct Bank Upload',
-      isPrimary: true
-    };
-    state.project.assetLibrary.unshift(newAsset);
-
-    // Set as active anchor immediately
-    if (!state.project.assetSheet) {
-      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
-    }
-    state.project.assetSheet.imageData = dataUrl;
-    state.project.assetSheet.title = newAsset.title;
-    state.project.assetSheet.isAnchorActive = true;
-    state.project.assetSheet.currentVersionId = assetId;
-
-    saveCurrentProject();
-    renderAssetSheetUI();
-    renderAnchorBannerUI();
-    showToast(`Asset "${newAsset.title}" ditambahkan ke Bank & aktif sebagai acuan 6 scene!`);
-  };
-  reader.readAsDataURL(file);
+  e.target.value = '';
+  saveCurrentProject();
+  renderAssetSheetUI();
+  renderAssetLibraryUI();
+  renderAnchorBannerUI();
+  renderScenesUI();
+  showToast(`${files.length} Asset berhasil ditambahkan ke Bank Asset!`);
 }
 
 function selectActiveLibraryAsset(assetId) {
-  const asset = (state.project.assetLibrary || []).find(a => a.id === assetId);
-  if (!asset) return;
-
-  state.project.assetLibrary.forEach(a => a.isPrimary = (a.id === assetId));
-
-  if (!state.project.assetSheet) {
-    state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
-  }
-  state.project.assetSheet.imageData = asset.imageData;
-  state.project.assetSheet.title = asset.title;
-  state.project.assetSheet.type = asset.type;
-  state.project.assetSheet.isAnchorActive = true;
-  state.project.assetSheet.currentVersionId = asset.id;
-
-  saveCurrentProject();
-  renderAssetSheetUI();
-  renderAnchorBannerUI();
-  showToast(`★ Asset "${asset.title}" sekarang aktif sebagai acuan visual utama 6 scene!`);
+  toggleAssetSelectionForScenes(assetId);
 }
 
 function deleteLibraryAsset(assetId) {
   state.project.assetLibrary = (state.project.assetLibrary || []).filter(a => a.id !== assetId);
   saveCurrentProject();
   renderAssetLibraryUI();
+  renderAnchorBannerUI();
+  renderScenesUI();
   showToast('Asset dihapus dari Bank Referensi.');
 }
 
@@ -2526,12 +2661,15 @@ function rollbackAssetVersion(versionId) {
   state.project.assetSheet.isAnchorActive = true;
 
   if (state.project.assetLibrary) {
-    state.project.assetLibrary.forEach(a => a.isPrimary = (a.id === ver.id));
+    const asset = state.project.assetLibrary.find(a => a.id === ver.id);
+    if (asset) asset.selectedForScenes = true;
   }
 
   saveCurrentProject();
   renderAssetSheetUI();
+  renderAssetLibraryUI();
   renderAnchorBannerUI();
+  renderScenesUI();
   showToast(`Asset Sheet di-rollback ke Versi ${ver.version}!`);
 }
 
@@ -2562,7 +2700,8 @@ async function handleGenerateAssetSheet() {
   els.assetCanvasContainer?.appendChild(tempCanvas);
 
   try {
-    const imgUrl = await callImageGeneration(promptText, '9:16');
+    const rawImgUrl = await callImageGeneration(promptText, '9:16');
+    const imgUrl = await compressImageIfNeeded(rawImgUrl);
     if (!state.project.assetSheet) {
       state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
     }
@@ -2586,7 +2725,9 @@ async function handleGenerateAssetSheet() {
 
     // Save to Bank Asset & Galeri Referensi
     if (!state.project.assetLibrary) state.project.assetLibrary = [];
-    state.project.assetLibrary.forEach(a => a.isPrimary = false);
+    const activeCount = state.project.assetLibrary.filter(a => a.selectedForScenes).length;
+    const shouldSelect = activeCount < 5;
+
     state.project.assetLibrary.unshift({
       id: newVer.id,
       title: `${state.project.assetSheet.title} (v${verNum})`,
@@ -2594,12 +2735,15 @@ async function handleGenerateAssetSheet() {
       imageData: imgUrl,
       createdAt: timeStr,
       prompt: promptText,
-      isPrimary: true
+      selectedForScenes: shouldSelect,
+      isPrimary: shouldSelect && activeCount === 0
     });
 
     saveCurrentProject();
     renderAssetSheetUI();
+    renderAssetLibraryUI();
     renderAnchorBannerUI();
+    renderScenesUI();
     showToast(`Asset Sheet (v${verNum}) berhasil dibuat & disimpan ke Bank Referensi!`);
   } catch (err) {
     console.error(err);
@@ -3102,9 +3246,14 @@ function renderAssetVersionReel() {
 function renderAssetLibraryUI() {
   if (!els.assetLibraryGrid) return;
   const library = state.project.assetLibrary || [];
+  const selectedAssets = getSelectedAssetReferences();
+  const selectedCount = selectedAssets.length;
 
   if (els.assetLibraryCountBadge) {
     els.assetLibraryCountBadge.textContent = `${library.length} Tersimpan`;
+  }
+  if (els.assetActiveCountText) {
+    els.assetActiveCountText.textContent = `${selectedCount}/5 Acuan Aktif`;
   }
 
   if (library.length === 0) {
@@ -3114,25 +3263,26 @@ function renderAssetLibraryUI() {
           <i data-lucide="layers" class="w-5 h-5 text-purple-400"></i>
         </div>
         <p class="text-xs text-slate-300 font-semibold">Bank Asset Masih Kosong</p>
-        <p class="text-[11px] text-slate-500 max-w-sm mx-auto">Setiap Asset Sheet yang di-generate atau gambar yang Anda upload akan tersimpan di sini. Anda bisa memilih asset mana saja untuk menjadi acuan pembuatan 6 scene.</p>
+        <p class="text-[11px] text-slate-500 max-w-sm mx-auto">Setiap Asset Sheet yang di-generate atau gambar yang Anda upload akan tersimpan di sini. Anda bisa memilih hingga maksimal 5 asset sebagai acuan pembuatan 6 Master Frame.</p>
       </div>
     `;
     lucide.createIcons();
     return;
   }
 
-  els.assetLibraryGrid.innerHTML = library.map(item => {
-    const isPrimary = item.isPrimary || (state.project.assetSheet?.imageData === item.imageData);
+  els.assetLibraryGrid.innerHTML = library.map((item) => {
+    const selectedIndex = selectedAssets.findIndex(s => s.id === item.id);
+    const isSelected = selectedIndex !== -1;
     const typeLabel = item.type === 'character' ? '🧍 Karakter' : (item.type === 'object' ? '📦 Objek' : (item.type === 'world' ? '🌌 World' : '🎬 Hero'));
 
     return `
-      <div class="group relative rounded-xl bg-dark-card border ${isPrimary ? 'border-purple-500 ring-2 ring-purple-500/30 bg-purple-950/15' : 'border-dark-border hover:border-purple-500/40'} p-2.5 space-y-2 transition flex flex-col justify-between shadow-lg">
-        <div class="relative rounded-lg overflow-hidden aspect-short bg-black border border-dark-border/80">
-          <img src="${item.imageData}" alt="${item.title}" class="w-full h-full object-cover">
-          ${isPrimary ? `
+      <div class="group relative rounded-xl bg-dark-card border ${isSelected ? 'border-purple-500 ring-2 ring-purple-500/40 bg-purple-950/25' : 'border-dark-border hover:border-purple-500/40'} p-2.5 space-y-2 transition flex flex-col justify-between shadow-lg">
+        <div class="relative rounded-lg overflow-hidden aspect-short bg-black border border-dark-border/80 cursor-pointer" onclick="openImageModal('${item.imageData}')">
+          <img src="${item.imageData}" alt="${item.title}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+          ${isSelected ? `
             <div class="absolute top-1.5 left-1.5 px-2 py-0.5 rounded-md bg-purple-600 text-[9px] font-black text-white uppercase tracking-wider shadow-md flex items-center gap-1">
               <i data-lucide="check-circle" class="w-2.5 h-2.5"></i>
-              <span>REFERENCE UTAMA</span>
+              <span>ACUAN #${selectedIndex + 1}</span>
             </div>
           ` : ''}
           <div class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/80 backdrop-blur-sm text-[9px] font-mono text-purple-300">
@@ -3150,18 +3300,19 @@ function renderAssetLibraryUI() {
           <h5 class="text-xs font-bold text-white truncate" title="${item.title}">${item.title}</h5>
         </div>
 
-        <button type="button" class="btn-select-lib-asset w-full py-1.5 px-2 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 ${isPrimary ? 'bg-purple-600/30 text-purple-300 border border-purple-500/40 cursor-default' : 'bg-dark-panel hover:bg-purple-600 hover:text-white border border-dark-border text-slate-300'}" data-id="${item.id}">
-          <i data-lucide="${isPrimary ? 'check' : 'check-circle'}" class="w-3 h-3"></i>
-          <span>${isPrimary ? 'Sedang Digunakan' : 'Gunakan Sebagai Acuan'}</span>
+        <button type="button" class="btn-toggle-lib-asset w-full py-1.5 px-2 rounded-lg text-[10px] font-bold transition flex items-center justify-center gap-1 ${isSelected ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 hover:bg-purple-700' : 'bg-dark-panel hover:bg-purple-600/30 hover:text-white border border-dark-border text-slate-300'}" data-id="${item.id}">
+          <i data-lucide="${isSelected ? 'check' : 'plus-circle'}" class="w-3 h-3"></i>
+          <span>${isSelected ? `✓ Acuan Section 4 (#${selectedIndex + 1}/5)` : `+ Jadikan Acuan (${selectedCount}/5)`}</span>
         </button>
       </div>
     `;
   }).join('');
 
   // Re-bind buttons inside library grid
-  els.assetLibraryGrid.querySelectorAll('.btn-select-lib-asset').forEach(btn => {
-    btn.addEventListener('click', () => {
-      selectActiveLibraryAsset(btn.dataset.id);
+  els.assetLibraryGrid.querySelectorAll('.btn-toggle-lib-asset').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleAssetSelectionForScenes(btn.dataset.id);
     });
   });
 
@@ -3176,44 +3327,97 @@ function renderAssetLibraryUI() {
 }
 
 function renderAnchorBannerUI() {
-  const as = state.project.assetSheet;
-  const imageRefs = getImageReferences();
-  const primaryImg = imageRefs[0];
+  const activeAssets = getSelectedAssetReferences(); // Up to 5 assets
+  const imageRefs = getImageReferences(); // From Section 1
   const isSeq = state.project.sequentialChaining !== false;
 
-  if (as && as.imageData && as.isAnchorActive !== false) {
-    if (els.anchorThumbBox) els.anchorThumbBox.innerHTML = `<img src="${as.imageData}" class="w-full h-full object-cover">`;
+  if (activeAssets.length > 0) {
     if (els.anchorBadgeStatus) {
       els.anchorBadgeStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
-      els.anchorBadgeStatus.textContent = `Aktif (${as.title || 'Asset Sheet'})`;
+      els.anchorBadgeStatus.textContent = `${activeAssets.length}/5 Asset Acuan Aktif`;
     }
+
     if (els.anchorDescriptionText) {
+      const titles = activeAssets.map(a => a.title).join(', ');
       els.anchorDescriptionText.textContent = isSeq
-        ? `Asset Sheet ini menjadi acuan awal Scene 01, dilanjutkan secara Sequential Chain (Scene 1 ➔ 2 ➔ ... ➔ 6 Loop).`
-        : `Google Gemini Banana Pro mengunci konsistensi Scene 1-6 dengan acuan visual Asset Sheet ini.`;
+        ? `Menggunakan ${activeAssets.length} asset (${titles}) sebagai visual anchor awal, dilanjutkan berantai (Sequential Chain 1 ➔ 2 ➔ ... ➔ 6 Loop).`
+        : `Google Gemini Banana Pro mengunci konsistensi Scene 1-6 dengan acuan bersamaan ${activeAssets.length} asset (${titles}).`;
     }
-  } else if (primaryImg && (primaryImg.dataUrl || primaryImg.data)) {
-    const src = primaryImg.dataUrl || `data:${primaryImg.mimeType || 'image/jpeg'};base64,${primaryImg.data}`;
-    if (els.anchorThumbBox) els.anchorThumbBox.innerHTML = `<img src="${src}" class="w-full h-full object-cover">`;
+
+    if (els.anchorThumbTray) {
+      els.anchorThumbTray.innerHTML = `
+        ${activeAssets.map((asset, idx) => `
+          <div class="relative group/thumb shrink-0 rounded-lg overflow-hidden border border-purple-500/60 bg-dark-card w-14 h-20 shadow-md flex flex-col justify-between">
+            <img src="${asset.imageData}" alt="${asset.title}" class="w-full h-full object-cover cursor-pointer hover:scale-105 transition" onclick="openImageModal('${asset.imageData}')">
+            <div class="absolute top-0.5 left-0.5 px-1 rounded bg-black/80 text-[8px] font-bold text-purple-300">
+              #${idx + 1}
+            </div>
+            <button type="button" class="btn-remove-anchor-ref absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-600/90 hover:bg-red-500 text-white flex items-center justify-center transition shadow" data-id="${asset.id}" title="Lepas Acuan">
+              <i data-lucide="x" class="w-2.5 h-2.5"></i>
+            </button>
+            <div class="absolute bottom-0 inset-x-0 bg-black/85 px-1 py-0.5 text-[8px] text-slate-300 truncate font-semibold text-center" title="${asset.title}">
+              ${asset.title}
+            </div>
+          </div>
+        `).join('')}
+        ${activeAssets.length < 5 ? `
+          <button type="button" id="btnQuickAddAsset" class="shrink-0 rounded-lg border-2 border-dashed border-dark-border hover:border-purple-500/60 bg-dark-card/40 w-14 h-20 flex flex-col items-center justify-center text-slate-400 hover:text-purple-300 transition text-[9px] font-semibold gap-1 p-1">
+            <i data-lucide="plus" class="w-4 h-4 text-purple-400"></i>
+            <span>+ Acuan (${activeAssets.length}/5)</span>
+          </button>
+        ` : ''}
+      `;
+
+      els.anchorThumbTray.querySelectorAll('.btn-remove-anchor-ref').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          toggleAssetSelectionForScenes(btn.dataset.id);
+        });
+      });
+
+      document.getElementById('btnQuickAddAsset')?.addEventListener('click', () => {
+        switchTab('tab-asset');
+      });
+    }
+  } else if (imageRefs.length > 0) {
     if (els.anchorBadgeStatus) {
       els.anchorBadgeStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30';
-      els.anchorBadgeStatus.textContent = imageRefs.length > 1 
-        ? `Aktif (${imageRefs.length} Foto Input Fase 01)` 
-        : 'Aktif (Foto Input Fase 01)';
+      els.anchorBadgeStatus.textContent = `${imageRefs.length}/5 Foto Input Fase 01`;
     }
     if (els.anchorDescriptionText) {
-      els.anchorDescriptionText.textContent = imageRefs.length > 1
-        ? `Menggunakan ${imageRefs.length} foto referensi terpasang dari Fase 01 sebagai acuan visual scene.`
-        : `Menggunakan foto/frame referensi dari Fase 01 sebagai acuan visual scene.`;
+      els.anchorDescriptionText.textContent = `Menggunakan ${imageRefs.length} foto referensi terpasang dari Fase 01 sebagai acuan visual scene.`;
+    }
+    if (els.anchorThumbTray) {
+      els.anchorThumbTray.innerHTML = imageRefs.map((img, idx) => {
+        const src = img.dataUrl || `data:${img.mimeType || 'image/jpeg'};base64,${img.data}`;
+        return `
+          <div class="relative group/thumb shrink-0 rounded-lg overflow-hidden border border-blue-500/60 bg-dark-card w-14 h-20 shadow-md">
+            <img src="${src}" class="w-full h-full object-cover cursor-pointer hover:scale-105 transition" onclick="openImageModal('${src}')">
+            <div class="absolute top-0.5 left-0.5 px-1 rounded bg-black/80 text-[8px] font-bold text-blue-300">
+              #${idx + 1}
+            </div>
+            <div class="absolute bottom-0 inset-x-0 bg-black/85 px-1 py-0.5 text-[8px] text-slate-300 truncate font-semibold text-center">
+              Fase 01 (#${idx + 1})
+            </div>
+          </div>
+        `;
+      }).join('');
     }
   } else {
-    if (els.anchorThumbBox) els.anchorThumbBox.innerHTML = `<i data-lucide="layers" class="w-5 h-5 text-slate-500"></i>`;
     if (els.anchorBadgeStatus) {
       els.anchorBadgeStatus.className = 'text-[10px] font-mono px-2 py-0.5 rounded bg-dark-card text-slate-400 border border-dark-border';
-      els.anchorBadgeStatus.textContent = 'Standby (Tanpa Anchor)';
+      els.anchorBadgeStatus.textContent = 'Standby (0/5 Asset)';
     }
     if (els.anchorDescriptionText) {
-      els.anchorDescriptionText.textContent = `Scene akan di-render mandiri. Anda bisa membuat Asset Sheet di Tab 3 untuk mengunci konsistensi karakter/objek.`;
+      els.anchorDescriptionText.textContent = `Belum ada asset aktif. Anda bisa membuat atau memilih hingga 5 asset di Section 03 untuk mengunci konsistensi karakter & objek.`;
+    }
+    if (els.anchorThumbTray) {
+      els.anchorThumbTray.innerHTML = `
+        <div class="flex items-center gap-2 py-1 px-3 rounded-lg bg-dark-card/50 border border-dashed border-dark-border text-slate-500 text-xs">
+          <i data-lucide="layers" class="w-4 h-4 text-purple-400"></i>
+          <span>Belum ada asset dipilih. Klik <strong>Kelola / Pilih Asset di Section 03</strong> untuk memilih hingga 5 acuan.</span>
+        </div>
+      `;
     }
   }
 
