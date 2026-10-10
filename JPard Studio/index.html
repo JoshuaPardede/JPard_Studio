@@ -575,15 +575,19 @@
       <div id="assetLibrarySection" class="p-6 rounded-2xl bg-dark-panel border border-dark-border space-y-4 shadow-xl">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-dark-border pb-4">
           <div>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
               <span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
               <h3 class="text-base font-extrabold text-white">Bank Asset &amp; Galeri Referensi</h3>
               <span id="assetLibraryCountBadge" class="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30">0 Tersimpan</span>
+              <span id="assetActiveCountBadge" class="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                <i data-lucide="check-check" class="w-3 h-3"></i>
+                <span id="assetActiveCountText">0/5 Acuan Aktif</span>
+              </span>
             </div>
-            <p class="text-xs text-slate-400 mt-0.5">Pilih asset manapun dari bank ini untuk dijadikan <strong>Active Reference Utama</strong> saat me-render 6 Master Frame.</p>
+            <p class="text-xs text-slate-400 mt-0.5">Pilih hingga <strong>maksimal 5 asset</strong> sebagai acuan visual multimodal untuk me-render Master Frame di Section 4.</p>
           </div>
           <div class="flex items-center gap-2">
-            <input id="inputAssetLibraryUpload" type="file" accept="image/*" class="hidden">
+            <input id="inputAssetLibraryUpload" type="file" accept="image/*" multiple class="hidden">
             <button type="button" id="btnUploadToAssetLibrary" class="px-3.5 py-2 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border text-xs font-bold text-slate-300 hover:text-white transition flex items-center gap-1.5">
               <i data-lucide="plus-circle" class="w-3.5 h-3.5 text-purple-400"></i>
               <span>Tambah Asset ke Bank</span>
@@ -617,24 +621,26 @@
         </div>
       </div>
 
-      <!-- Visual Anchor Indicator Banner -->
-      <div id="anchorActiveBanner" class="p-3.5 rounded-xl bg-[#090c16] border border-purple-500/30 flex items-center justify-between gap-3 shadow-md">
-        <div class="flex items-center gap-3">
-          <div id="anchorThumbBox" class="w-10 h-10 rounded-lg bg-dark-card border border-dark-border overflow-hidden shrink-0 flex items-center justify-center">
-            <i data-lucide="layers" class="w-5 h-5 text-purple-400"></i>
+      <!-- Visual Anchor Indicator Banner (Multi-Asset Reference Support Up to 5) -->
+      <div id="anchorActiveBanner" class="p-4 rounded-xl bg-[#090c16] border border-purple-500/30 space-y-3 shadow-md">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-dark-border/60 pb-2.5">
+          <div class="flex items-center gap-2.5 flex-wrap">
+            <span class="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse"></span>
+            <span class="text-xs font-bold text-white">Multimodal Visual Anchor (Maksimal 5 Asset Reference)</span>
+            <span id="anchorBadgeStatus" class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">0/5 Aktif</span>
           </div>
-          <div>
-            <div class="text-xs font-bold text-white flex items-center gap-2">
-              <span>Multimodal Visual Anchor:</span>
-              <span id="anchorBadgeStatus" class="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">Standby</span>
-            </div>
-            <p id="anchorDescriptionText" class="text-[11px] text-slate-400 mt-0.5">Asset Sheet di Fase 03 akan otomatis menjadi acuan gambar Gemini Banana Pro untuk Scene 1 s/d 6.</p>
-          </div>
+          <button type="button" id="btnJumpToAssetTab" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-purple-300 hover:text-white transition shrink-0 flex items-center gap-1.5 self-start sm:self-auto">
+            <i data-lucide="layers" class="w-3.5 h-3.5"></i>
+            <span>Kelola / Pilih Asset di Section 03</span>
+          </button>
         </div>
-        <button type="button" id="btnJumpToAssetTab" class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-purple-300 hover:text-white transition shrink-0 flex items-center gap-1.5">
-          <i data-lucide="layers" class="w-3.5 h-3.5"></i>
-          <span class="hidden sm:inline">Buka Asset Sheet</span>
-        </button>
+
+        <!-- Multi-Thumbnail Tray for Section 4 -->
+        <div id="anchorThumbTray" class="flex items-center gap-3 overflow-x-auto pb-1 no-scrollbar min-h-[70px]">
+          <!-- Dynamically populated up to 5 asset thumbnails -->
+        </div>
+
+        <p id="anchorDescriptionText" class="text-[11px] text-slate-400">Semua asset aktif di atas akan dikirimkan bersamaan ke Google Gemini Banana Pro untuk mengunci konsistensi karakter, objek, dan setting visual di Scene 1 s/d 6.</p>
       </div>
 
       <!-- Quick Scene Navigation Pill Bar -->
