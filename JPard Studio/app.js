@@ -174,6 +174,7 @@ const els = {
   inputAssetPromptRefFile: document.getElementById('inputAssetPromptRefFile'),
   assetPromptRefTray: document.getElementById('assetPromptRefTray'),
   assetPromptRefEmpty: document.getElementById('assetPromptRefEmpty'),
+  btnSyncAssetPrompt: document.getElementById('btnSyncAssetPrompt'),
   btnResetAssetPrompt: document.getElementById('btnResetAssetPrompt'),
   btnGenerateAssetSheet: document.getElementById('btnGenerateAssetSheet'),
   btnProceedToScenesFromAsset: document.getElementById('btnProceedToScenesFromAsset'),
@@ -334,6 +335,7 @@ function setupEventListeners() {
   });
 
   els.btnGenerateAssetSheet?.addEventListener('click', handleGenerateAssetSheet);
+  els.btnSyncAssetPrompt?.addEventListener('click', syncAssetPromptFromNarrative);
   els.btnResetAssetPrompt?.addEventListener('click', resetAssetPrompt);
   els.btnUploadCustomAsset?.addEventListener('click', () => els.inputCustomAssetFile?.click());
   els.inputCustomAssetFile?.addEventListener('change', handleCustomAssetUpload);
@@ -659,6 +661,17 @@ function switchTab(tabId) {
       t.classList.add('text-slate-400');
     }
   });
+
+  // When opening Section 3 (Asset Sheet), ensure prompt reflects current narrative if it was generic or missing
+  if (tabId === 'tab-asset') {
+    const rawInput = state.project.sourceInput?.trim() || els.inputReference?.value?.trim() || '';
+    const currentPrompt = state.project.assetSheet?.prompt || '';
+    const isGeneric = !currentPrompt || currentPrompt.includes('Main subject') || currentPrompt.includes('Daily Short') || currentPrompt.includes('Sosok pengamat');
+    if (rawInput && (!state.project.assetSheet || isGeneric)) {
+      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+      renderAssetSheetUI();
+    }
+  }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -1410,15 +1423,19 @@ Extract the SOURCE PACK. Output ONLY a valid JSON object matching this exact str
     }
 
     state.project.sourcePack = sourcePackData;
+    state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, sourcePackData);
     saveCurrentProject();
     renderSourcePackUI();
-    showToast('Source Pack berhasil dibuat!');
+    renderAssetSheetUI();
+    showToast('Source Pack berhasil dibuat & Asset Sheet disinkronkan!');
   } catch (err) {
     console.error(err);
     showToast(`Error: ${err.message}. Menggunakan generator pintar bawaan.`);
     state.project.sourcePack = generateSmartSourcePack(input, theme);
+    state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
     saveCurrentProject();
     renderSourcePackUI();
+    renderAssetSheetUI();
   } finally {
     els.btnGenerateSourcePack.disabled = false;
     els.btnGenerateSourcePack.innerHTML = `<i data-lucide="sparkles" class="w-4 h-4"></i><span>ANALISIS & BUAT SOURCE PACK</span>`;
@@ -1469,6 +1486,12 @@ Output ONLY valid JSON matching this schema:
       "worldRules": "Unbreakable world constraints"
     }
   },
+  "assetSheetSpec": {
+    "title": "Title for asset sheet",
+    "type": "character",
+    "prompt": "Highly detailed Banana Pro 9:16 prompt specifying the exact protagonist/hero subject from the narrative (appearance, clothing, materials, facial features, lighting, neutral studio background, turnaround views) --ar 9:16",
+    "negativePrompt": "distorted anatomy, multiple different faces, low quality, cartoon, watermark"
+  },
   "scenes": [
     {
       "number": 1,
@@ -1497,6 +1520,17 @@ Output ONLY valid JSON matching this schema:
         const parsed = JSON.parse(cleaned);
         masterData = parsed.masterPack;
         scenesData = parsed.scenes;
+        if (parsed.assetSheetSpec?.prompt) {
+          state.project.assetSheet = {
+            type: parsed.assetSheetSpec.type || (state.project.continuityLevel === 'B' ? 'character' : (state.project.continuityLevel === 'C' ? 'object' : 'world')),
+            title: parsed.assetSheetSpec.title || 'Master Visual Reference Sheet',
+            prompt: parsed.assetSheetSpec.prompt,
+            negativePrompt: parsed.assetSheetSpec.negativePrompt || 'multiple different faces, distorted anatomy, blur, text, watermark, split framing',
+            imageData: null,
+            isAnchorActive: true,
+            createdAt: new Date().toISOString()
+          };
+        }
       }
     }
 
@@ -1518,7 +1552,9 @@ Output ONLY valid JSON matching this schema:
     }
 
     // Auto-prepare Master Asset Sheet for Visual Anchoring (Tab 3)
-    state.project.assetSheet = generateDefaultAssetSheet(masterData, state.project.continuityLevel, state.project.sourcePack);
+    if (!state.project.assetSheet || !state.project.assetSheet.prompt) {
+      state.project.assetSheet = generateDefaultAssetSheet(masterData, state.project.continuityLevel, state.project.sourcePack);
+    }
 
     saveCurrentProject();
     renderMasterPackUI();
@@ -3038,6 +3074,85 @@ function renderAssetPromptRefTray() {
   lucide.createIcons();
 }
 
+async function syncAssetPromptFromNarrative() {
+  const currentType = state.project.assetSheet?.type || (state.project.continuityLevel === 'B' ? 'character' : (state.project.continuityLevel === 'C' ? 'object' : 'world'));
+  const rawInput = state.project.sourceInput?.trim() || els.inputReference?.value?.trim() || '';
+
+  if (!rawInput && !state.project.sourcePack) {
+    showToast('Silakan tulis ide cerita atau narasi di Section 1 terlebih dahulu!');
+    return;
+  }
+
+  if (els.btnSyncAssetPrompt) {
+    els.btnSyncAssetPrompt.disabled = true;
+    els.btnSyncAssetPrompt.innerHTML = `<span class="animate-spin inline-block mr-1">⏳</span> Menyinkronkan...`;
+  }
+
+  try {
+    let aiPrompt = null;
+
+    // Live Gemini API: generate hyper-customized Banana Pro 9:16 prompt based on the narrative!
+    if (state.apiKey && state.apiKey.trim().length > 10) {
+      const typeLabel = currentType === 'character' 
+        ? 'Character turnaround model sheet (multi-angle front, 3/4, profile)' 
+        : (currentType === 'object' 
+          ? 'Object & product turntable 360 reference sheet' 
+          : 'World environment & architectural concept sheet');
+      
+      const sysPrompt = `You are a world-class prompt engineer for Google Gemini Banana Pro (gemini-3.1-flash-image) specialized in 9:16 vertical short video character & asset design.
+Write a single comprehensive, production-grade image prompt for a "${typeLabel}".
+The prompt MUST faithfully describe the exact subject, character appearance, wardrobe, facial details, materials, environment context, lighting, and palette from the provided story narrative.
+Include neutral studio backdrop, 8k photorealism, and finish with "--ar 9:16".
+Output ONLY the raw prompt string. Do NOT output markdown code blocks, quotes, or conversational explanations.`;
+
+      const userPrompt = `Story Narrative:
+"""
+${rawInput}
+"""
+Continuity Level: ${state.project.continuityLevel || 'B'}
+Asset Type: ${currentType}
+Theme: ${state.project.theme || 'Cinematic'}
+
+Generate the official Master Asset Sheet prompt in English for Gemini Banana Pro 9:16:`;
+
+      const geminiRes = await callGemini(userPrompt, sysPrompt);
+      if (geminiRes && geminiRes.trim().length > 25) {
+        aiPrompt = geminiRes.replace(/^["'`]|["'`]$/g, '').replace(/```[a-z]*\n?/g, '').trim();
+      }
+    }
+
+    if (!aiPrompt) {
+      const generated = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack, currentType);
+      aiPrompt = generated.prompt;
+    }
+
+    if (!state.project.assetSheet) {
+      state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack, currentType);
+    }
+    state.project.assetSheet.prompt = aiPrompt;
+    saveCurrentProject();
+    renderAssetSheetUI();
+    showToast('✨ Prompt Asset Sheet berhasil disinkronkan dengan ide cerita Anda!');
+  } catch (err) {
+    console.error(err);
+    const fallback = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack, currentType);
+    if (!state.project.assetSheet) {
+      state.project.assetSheet = fallback;
+    } else {
+      state.project.assetSheet.prompt = fallback.prompt;
+    }
+    saveCurrentProject();
+    renderAssetSheetUI();
+    showToast('Prompt disinkronkan dari ide cerita (Engine Bawaan).');
+  } finally {
+    if (els.btnSyncAssetPrompt) {
+      els.btnSyncAssetPrompt.disabled = false;
+      els.btnSyncAssetPrompt.innerHTML = `<i data-lucide="sparkles" class="w-3.5 h-3.5 text-purple-300"></i><span>Sinkronkan dari Narasi</span>`;
+      lucide.createIcons();
+    }
+  }
+}
+
 function resetAssetPrompt() {
   const currentType = state.project.assetSheet?.type || (state.project.continuityLevel === 'B' ? 'character' : (state.project.continuityLevel === 'C' ? 'object' : 'world'));
   const generated = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack, currentType);
@@ -3049,7 +3164,7 @@ function resetAssetPrompt() {
   }
   saveCurrentProject();
   renderAssetSheetUI();
-  showToast('Prompt Asset Sheet direset ke format optimal!');
+  showToast('Prompt Asset Sheet direset mengikuti narasi cerita saat ini!');
 }
 
 async function handleCustomAssetUpload(e) {
@@ -3318,28 +3433,77 @@ function generateDefaultAssetSheet(masterPack, continuityLevel, sourcePack, forc
     else type = 'thumbnail';
   }
 
-  const title = masterPack?.title || 'Daily Short';
-  const style = masterPack?.visualStyle || 'Cinematic Photorealism';
-  const color = masterPack?.globalVisualLock?.colorPalette || 'High contrast film grade';
-  const lighting = masterPack?.globalVisualLock?.lightingLanguage || 'Cinematic lighting';
-  const subject = sourcePack?.storyElements?.character || sourcePack?.storyElements?.object || sourcePack?.subject || 'Main subject';
-  const location = sourcePack?.storyElements?.location || 'Atmospheric setting';
+  // 1. Raw story narrative from Section 1
+  const rawInput = state.project.sourceInput?.trim() || els.inputReference?.value?.trim() || '';
+
+  // 2. Intelligent subject extraction
+  let subject = '';
+  let location = '';
+
+  // Check structured sourcePack
+  if (sourcePack) {
+    const char = sourcePack.storyElements?.character;
+    const obj = sourcePack.storyElements?.object;
+    const loc = sourcePack.storyElements?.location;
+    if (type === 'character' && char && !char.includes('Sosok pengamat') && !char.includes('elemen sentral')) {
+      subject = char;
+    } else if (type === 'object' && obj && !obj.includes('Objek simbolik')) {
+      subject = obj;
+    } else if (sourcePack.subject && !sourcePack.subject.startsWith('Eksplorasi visual terfokus:')) {
+      subject = sourcePack.subject;
+    }
+    if (loc && !loc.includes('Lingkungan berkarakter')) {
+      location = loc;
+    }
+  }
+
+  // If subject is still empty or generic, extract directly from rawInput
+  if (!subject && rawInput) {
+    // Clean rawInput (remove video reference prefix or URLs if any)
+    const cleanLines = rawInput.split('\n')
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('http') && !l.toLowerCase().startsWith('video referensi:'));
+    const firstCleanLine = cleanLines[0] || rawInput;
+    // Extract first sentence or up to 120 characters
+    const firstSentence = firstCleanLine.split(/[.!?]/)[0]?.trim() || firstCleanLine;
+    subject = firstSentence.slice(0, 120);
+  }
+
+  if (!subject) {
+    subject = masterPack?.title || 'Protagonist character';
+  }
+
+  if (!location) {
+    if (rawInput) {
+      location = `cinematic atmospheric environment based on "${subject.slice(0, 50)}"`;
+    } else {
+      location = 'cinematic atmospheric environment';
+    }
+  }
+
+  const title = masterPack?.title || (rawInput ? subject.slice(0, 40) : 'Daily Short Video');
+  const style = masterPack?.visualStyle || (state.project.theme && state.project.theme !== 'bebas' ? state.project.theme : 'Cinematic Photorealism');
+  const color = masterPack?.globalVisualLock?.colorPalette || 'High contrast film grade, balanced tones';
+  const lighting = masterPack?.globalVisualLock?.lightingLanguage || 'Studio key lighting with subtle cinematic rim highlights';
+
+  // Story context snippet (up to 150 chars)
+  const storySnippet = rawInput ? ` Narrative lore: "${rawInput.slice(0, 150).replace(/[\r\n]+/g, ' ')}".` : '';
 
   let prompt = '';
   let sheetTitle = '';
 
   if (type === 'character') {
     sheetTitle = 'Character Turnaround Model Sheet';
-    prompt = `Character turnaround model sheet and visual reference sheet of ${subject}, showing front view, 3/4 view, and profile angle in 9:16 vertical composition. Wearing authentic cinematic clothing and gear matching ${title}. Clean neutral studio background, 50mm portrait lens, ultra high resolution photorealism, detailed facial features, consistent hair and skin texture, ${lighting}, color grade: ${color} --ar 9:16 --no multiple different people, deformed hands, extra limbs, cartoon`;
+    prompt = `Character turnaround model sheet and master visual reference sheet of ${subject}.${storySnippet} Showing multi-angle views (front view, 3/4 perspective, and side profile) in unified 9:16 vertical composition. Authentic cinematic wardrobe, realistic textures, and distinctive gear. Clean neutral studio gradient background, shot on 50mm portrait lens, 8k resolution, razor-sharp facial details, consistent skin texture and hairstyle, ${lighting}, color grade: ${color} --ar 9:16 --no multiple different people, deformed hands, extra limbs, cartoon, watermark, blur`;
   } else if (type === 'object') {
     sheetTitle = 'Object & Product Turntable Sheet';
-    prompt = `Product design turntable 360 reference sheet of ${sourcePack?.storyElements?.object || subject}, multi-angle orthographic and hero perspective views in 9:16 vertical composition. Pristine studio product photography, razor sharp macro surface texture, reflections and material details, ${lighting}, color palette: ${color}, clean dark backdrop, commercial masterpiece --ar 9:16 --no blurry, distorted proportions, extra objects`;
+    prompt = `Product design turntable 360 reference sheet of ${subject}.${storySnippet} Showcasing multi-angle orthographic and hero perspective views in unified 9:16 vertical layout. Commercial product photography with razor-sharp macro surface textures, material reflections, pristine details, ${lighting}, color palette: ${color}, clean minimal backdrop, commercial masterpiece --ar 9:16 --no blurry, distorted proportions, extra clutter, text`;
   } else if (type === 'world') {
     sheetTitle = 'World & Style Environment Sheet';
-    prompt = `Environment and architectural concept style sheet of ${location}, showcasing key environmental structures, atmospheric lighting conditions, and texture details in 9:16 vertical layout. Visual style: ${style}. Lighting rules: ${lighting}. Color palette: ${color}. Anamorphic 35mm lens, atmospheric haze, monumental scale, cinematic worldbuilding guide --ar 9:16 --no blurry spots, low quality, oversaturated cartoon`;
+    prompt = `Environment and architectural concept style sheet of ${location}.${storySnippet} Showcasing key architectural structures, atmospheric weather conditions, and spatial texture details in unified 9:16 vertical composition. Visual style: ${style}. Lighting: ${lighting}. Color palette: ${color}. Anamorphic 35mm lens, atmospheric depth, cinematic worldbuilding guide --ar 9:16 --no blurry spots, low quality, cartoon`;
   } else {
     sheetTitle = 'Hero Keyframe & Poster Thumbnail';
-    prompt = `Iconic high-impact hero keyframe poster and opening thumbnail for "${title}", featuring ${subject} in ${location}. Dramatic dynamic low-angle composition with maximum curiosity hook, intense cinematic rim lighting, volumetrics, 8k resolution, ${style}, masterpiece composition ready for viral short video cover --ar 9:16 --no text watermark, amateur, blurry`;
+    prompt = `Iconic high-impact hero keyframe poster and opening thumbnail for "${title}", featuring ${subject} in ${location}.${storySnippet} Dramatic dynamic low-angle composition with maximum curiosity hook, intense cinematic rim lighting, volumetrics, 8k resolution, ${style}, masterpiece composition ready for viral short video cover --ar 9:16 --no text watermark, amateur, blurry`;
   }
 
   return {
