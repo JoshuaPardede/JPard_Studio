@@ -107,6 +107,7 @@ const els = {
   // Tab 1: Source & Universal Ingest Hub
   inputReference: document.getElementById('inputReference'),
   btnExpandReferenceHub: document.getElementById('btnExpandReferenceHub'),
+  btnExpandReferenceHubFloating: document.getElementById('btnExpandReferenceHubFloating'),
   modalReferenceFocus: document.getElementById('modalReferenceFocus'),
   btnMinimizeReferenceFocus: document.getElementById('btnMinimizeReferenceFocus'),
   inputReferenceFocus: document.getElementById('inputReferenceFocus'),
@@ -351,7 +352,15 @@ function setupEventListeners() {
     e.target.value = '';
   });
 
-  // Section 1: Focus Writing Mode Handlers
+  // Section 1: Auto-resize input & Focus Writing Mode Handlers
+  const autoResizeReferenceInput = () => {
+    if (!els.inputReference) return;
+    els.inputReference.style.height = 'auto';
+    const scrollH = els.inputReference.scrollHeight;
+    const newH = Math.min(Math.max(scrollH, 110), 450);
+    els.inputReference.style.height = `${newH}px`;
+  };
+
   const updateFocusWordCount = () => {
     const val = els.inputReferenceFocus?.value || '';
     const words = val.trim() ? val.trim().split(/\s+/).length : 0;
@@ -367,10 +376,10 @@ function setupEventListeners() {
       els.inputReferenceFocus.value = els.inputReference.value || '';
       updateFocusWordCount();
     }
-    els.modalReferenceFocus.classList.remove('hidden');
+    els.modalReferenceFocus.classList.add('active');
     setTimeout(() => {
       els.inputReferenceFocus?.focus();
-    }, 50);
+    }, 120);
   };
 
   const closeReferenceFocusModal = () => {
@@ -378,20 +387,34 @@ function setupEventListeners() {
     if (els.inputReferenceFocus && els.inputReference) {
       els.inputReference.value = els.inputReferenceFocus.value;
       state.project.sourceInput = els.inputReference.value;
+      autoResizeReferenceInput();
       saveCurrentProject();
     }
-    els.modalReferenceFocus.classList.add('hidden');
+    els.modalReferenceFocus.classList.remove('active');
     els.inputReference?.focus();
   };
 
   els.btnExpandReferenceHub?.addEventListener('click', openReferenceFocusModal);
+  els.btnExpandReferenceHubFloating?.addEventListener('click', openReferenceFocusModal);
   els.btnMinimizeReferenceFocus?.addEventListener('click', closeReferenceFocusModal);
   els.btnSaveAndCloseFocus?.addEventListener('click', closeReferenceFocusModal);
+
+  // Close when clicking outside modal card (on backdrop)
+  els.modalReferenceFocus?.addEventListener('click', (e) => {
+    if (e.target === els.modalReferenceFocus) {
+      closeReferenceFocusModal();
+    }
+  });
+
+  els.inputReference?.addEventListener('input', () => {
+    autoResizeReferenceInput();
+  });
 
   els.inputReferenceFocus?.addEventListener('input', () => {
     if (els.inputReference) {
       els.inputReference.value = els.inputReferenceFocus.value;
       state.project.sourceInput = els.inputReference.value;
+      autoResizeReferenceInput();
     }
     updateFocusWordCount();
   });
@@ -404,6 +427,7 @@ function setupEventListeners() {
         if (els.inputReference) {
           els.inputReference.value = els.inputReferenceFocus.value;
           state.project.sourceInput = els.inputReference.value;
+          autoResizeReferenceInput();
           saveCurrentProject();
         }
         updateFocusWordCount();
@@ -415,7 +439,7 @@ function setupEventListeners() {
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && els.modalReferenceFocus && !els.modalReferenceFocus.classList.contains('hidden')) {
+    if (e.key === 'Escape' && els.modalReferenceFocus && els.modalReferenceFocus.classList.contains('active')) {
       closeReferenceFocusModal();
     }
   });
