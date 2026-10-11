@@ -1,69 +1,308 @@
-/* JPard Studio Custom Styles */
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+/* JPard Studio — Apple WWDC 2026 Design System */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
-  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  
+  /* Apple WWDC 2026 Spatial Palette */
+  --space-black: #06070a;
+  --apple-glass-bg: rgba(16, 19, 29, 0.72);
+  --apple-card-bg: rgba(255, 255, 255, 0.045);
+  --apple-border: rgba(255, 255, 255, 0.09);
+  --apple-border-specular: rgba(255, 255, 255, 0.16);
+  --apple-rim-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.14);
+  --apple-spring-curve: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Base Reset & Atmospheric Background */
+html {
+  color-scheme: dark;
 }
 
 body {
   font-family: var(--font-sans);
-  background-color: #090a0f;
-  color: #e2e8f0;
+  background-color: var(--space-black);
+  background-image: 
+    radial-gradient(ellipse 900px 500px at 50% 0%, rgba(249, 115, 22, 0.08), transparent 70%),
+    radial-gradient(circle 800px at 85% 35%, rgba(99, 102, 241, 0.04), transparent 60%),
+    radial-gradient(circle 900px at 15% 70%, rgba(168, 85, 247, 0.035), transparent 60%);
+  background-attachment: fixed;
+  color: #f1f5f9;
   overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 code, pre, .font-mono {
   font-family: var(--font-mono);
 }
 
-/* Custom Scrollbar */
+/* Apple Refined Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f111a;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #232738;
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 9999px;
+  border: 1px solid transparent;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #383e58;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* ================================================= */
+/* APPLE WWDC 2026 SPATIAL GLASS & PANELS           */
+/* ================================================= */
+
+.glass-panel,
+.bg-dark-panel {
+  background-color: var(--apple-glass-bg) !important;
+  backdrop-filter: blur(28px) saturate(190%) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(190%) !important;
+  border: 1px solid var(--apple-border) !important;
+  box-shadow: var(--apple-rim-highlight), 0 16px 40px -12px rgba(0, 0, 0, 0.6) !important;
+  border-radius: 1.25rem;
+}
+
+.bg-dark-card {
+  background-color: var(--apple-card-bg) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  border-radius: 0.875rem;
+}
+
+.border-dark-border {
+  border-color: var(--apple-border) !important;
+}
+
+.hover\:bg-dark-hover:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Elevated Spatial Glass */
+.glass-panel-elevated {
+  background: rgba(20, 24, 38, 0.82) !important;
+  backdrop-filter: blur(32px) saturate(200%) !important;
+  -webkit-backdrop-filter: blur(32px) saturate(200%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.22), 0 24px 50px -12px rgba(0, 0, 0, 0.7) !important;
+  border-radius: 1.5rem;
+}
+
+/* Interactive Card Micro-interactions */
+.glass-panel-hover,
+.scene-card,
+.btn-level-card {
+  transition: transform 0.25s var(--apple-spring-curve), border-color 0.25s ease, box-shadow 0.25s ease;
+}
+
+.glass-panel-hover:hover,
+.scene-card:hover {
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.2), 0 20px 45px -10px rgba(0, 0, 0, 0.65) !important;
+}
+
+/* ================================================= */
+/* FLOATING ISLAND CAPSULE STEP NAVIGATION          */
+/* ================================================= */
+
+.floating-nav-dock {
+  background: rgba(12, 14, 23, 0.88);
+  backdrop-filter: blur(32px) saturate(200%);
+  -webkit-backdrop-filter: blur(32px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 36px -8px rgba(0, 0, 0, 0.7), inset 0 1px 0 0 rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+  padding: 0.375rem;
+}
+
+.nav-tab {
+  position: relative;
+  transition: all 0.22s var(--apple-spring-curve);
+  border-radius: 9999px !important;
+  border: 1px solid transparent !important;
+  letter-spacing: 0.02em;
+}
+
+.nav-tab:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+  transform: translateY(-0.5px);
+}
+
+.nav-tab:active {
+  transform: scale(0.97);
+}
+
+.nav-tab.active {
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.24) !important;
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.38), 0 4px 18px -2px rgba(249, 115, 22, 0.32) !important;
+}
+
+.nav-tab.active .nav-tab-badge {
+  background: linear-gradient(180deg, #ff7a45, #ea580c) !important;
+  color: #ffffff !important;
+  box-shadow: 0 0 12px rgba(249, 115, 22, 0.6) !important;
+  border: 1px solid rgba(255, 255, 255, 0.35) !important;
+}
+
+/* ================================================= */
+/* APPLE RECESSED INPUT WELLS & TEXTAREAS           */
+/* ================================================= */
+
+input[type="text"],
+input[type="password"],
+input[type="number"],
+textarea,
+select {
+  background-color: rgba(0, 0, 0, 0.35) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.4) !important;
+  border-radius: 0.875rem !important;
+  transition: all 0.2s var(--apple-spring-curve) !important;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+input[type="number"]:focus,
+textarea:focus,
+select:focus {
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.4), 0 0 0 3px rgba(249, 115, 22, 0.22) !important;
+  outline: none !important;
+}
+
+/* ================================================= */
+/* APPLE WWDC 2026 BUTTONS & MICRO-INTERACTIONS     */
+/* ================================================= */
+
+/* Apple Liquid Primary Button (Orange / Flame) */
+.btn-apple-primary {
+  background: linear-gradient(180deg, #ff7438 0%, #ea580c 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.45), 0 8px 24px -4px rgba(234, 88, 12, 0.45) !important;
+  border-radius: 0.875rem;
+  font-weight: 700;
+  transition: all 0.2s var(--apple-spring-curve);
+}
+
+.btn-apple-primary:hover {
+  background: linear-gradient(180deg, #ff854f 0%, #f97316 100%) !important;
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.55), 0 12px 28px -4px rgba(234, 88, 12, 0.6) !important;
+  transform: translateY(-1px);
+}
+
+.btn-apple-primary:active {
+  transform: scale(0.98);
+}
+
+/* Apple Frosted Secondary Button */
+.btn-apple-secondary {
+  background: rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  color: #e2e8f0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.14) !important;
+  border-radius: 0.875rem;
+  transition: all 0.2s var(--apple-spring-curve);
+}
+
+.btn-apple-secondary:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  transform: translateY(-1px);
+}
+
+.btn-apple-secondary:active {
+  transform: scale(0.98);
+}
+
+/* Apple Liquid Violet / Purple Button */
+.btn-apple-purple {
+  background: linear-gradient(180deg, #a855f7 0%, #7c3aed 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.45), 0 8px 24px -4px rgba(124, 58, 237, 0.45) !important;
+  border-radius: 0.875rem;
+  font-weight: 700;
+  transition: all 0.2s var(--apple-spring-curve);
+}
+
+.btn-apple-purple:hover {
+  background: linear-gradient(180deg, #b76bf9 0%, #8b5cf6 100%) !important;
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.55), 0 12px 28px -4px rgba(124, 58, 237, 0.6) !important;
+  transform: translateY(-1px);
+}
+
+.btn-apple-purple:active {
+  transform: scale(0.98);
+}
+
+/* Apple Liquid Blue / Cyan Button */
+.btn-apple-blue {
+  background: linear-gradient(180deg, #38bdf8 0%, #2563eb 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.28) !important;
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.45), 0 8px 24px -4px rgba(37, 99, 235, 0.45) !important;
+  border-radius: 0.875rem;
+  font-weight: 700;
+  transition: all 0.2s var(--apple-spring-curve);
+}
+
+.btn-apple-blue:hover {
+  background: linear-gradient(180deg, #60a5fa 0%, #3b82f6 100%) !important;
+  box-shadow: inset 0 1px 1px 0 rgba(255, 255, 255, 0.55), 0 12px 28px -4px rgba(37, 99, 235, 0.6) !important;
+  transform: translateY(-1px);
+}
+
+.btn-apple-blue:active {
+  transform: scale(0.98);
 }
 
 /* Glow effects */
 .glow-accent {
-  box-shadow: 0 0 25px -5px rgba(234, 88, 12, 0.25);
+  box-shadow: 0 0 28px -4px rgba(234, 88, 12, 0.3);
 }
 
 .glow-blue {
-  box-shadow: 0 0 25px -5px rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 28px -4px rgba(59, 130, 246, 0.25);
 }
 
 .glow-emerald {
-  box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.2);
+  box-shadow: 0 0 28px -4px rgba(16, 185, 129, 0.25);
 }
 
-/* Card hover animation */
-.glass-panel {
-  background: rgba(18, 20, 29, 0.75);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+.glow-purple {
+  box-shadow: 0 0 28px -4px rgba(168, 85, 247, 0.25);
 }
 
-.glass-panel-hover:hover {
-  border-color: rgba(234, 88, 12, 0.3);
-  transition: all 0.2s ease-in-out;
+/* Titanium & Gradient text */
+.gradient-text-titanium {
+  background: linear-gradient(180deg, #FFFFFF 0%, #A1A1AA 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-/* Gradient text */
 .gradient-text-orange {
-  background: linear-gradient(135deg, #fb923c, #f97316, #ea580c);
+  background: linear-gradient(135deg, #ff8c5a 0%, #f97316 50%, #ea580c 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
@@ -112,12 +351,18 @@ code, pre, .font-mono {
   aspect-ratio: 9 / 16;
 }
 
-/* Focus Writing Modal Pop-up Transition */
+/* ================================================= */
+/* FOCUS WRITING & SPATIAL MODALS                    */
+/* ================================================= */
+
 .focus-modal-overlay {
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(32px) saturate(190%);
+  -webkit-backdrop-filter: blur(32px) saturate(190%);
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
-  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.28s;
+  transition: opacity 0.28s var(--apple-spring-curve), visibility 0.28s;
 }
 
 .focus-modal-overlay.active {
@@ -127,9 +372,11 @@ code, pre, .font-mono {
 }
 
 .focus-modal-card {
-  transform: scale(0.92) translateY(18px);
+  transform: scale(0.93) translateY(16px);
   opacity: 0;
-  transition: transform 0.32s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 1.75rem !important;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.22), 0 32px 80px -10px rgba(0, 0, 0, 0.85) !important;
+  transition: transform 0.32s var(--apple-spring-curve), opacity 0.28s var(--apple-spring-curve);
 }
 
 .focus-modal-overlay.active .focus-modal-card {
