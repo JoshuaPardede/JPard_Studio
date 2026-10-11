@@ -326,7 +326,7 @@ function setupEventListeners() {
   });
 
   // Navigation Tabs
-  els.navTabs.forEach(tab => {
+  els.navTabs?.forEach(tab => {
     tab.addEventListener('click', () => {
       const tabId = tab.dataset.tab;
       switchTab(tabId);
@@ -385,6 +385,7 @@ function setupEventListeners() {
     const newH = Math.min(Math.max(scrollH, 110), 450);
     els.inputReference.style.height = `${newH}px`;
   };
+  autoResizeReferenceInput();
 
   const updateFocusWordCount = () => {
     const val = els.inputReferenceFocus?.value || '';
@@ -567,7 +568,7 @@ function setupEventListeners() {
   });
 
   // Presets
-  els.btnPreset.forEach(btn => {
+  els.btnPreset?.forEach(btn => {
     btn.addEventListener('click', () => {
       const p = btn.dataset.preset;
       applyPreset(p);
@@ -581,15 +582,6 @@ function setupEventListeners() {
       updateContinuityLevelUI();
       saveCurrentProject();
       showToast(`Continuity Lock: Level ${state.project.continuityLevel} aktif!`);
-    });
-  });
-
-  // Continuity Level Buttons
-  els.btnLevels.forEach(btn => {
-    btn.addEventListener('click', () => {
-      state.project.continuityLevel = btn.dataset.level;
-      updateContinuityLevelUI();
-      saveCurrentProject();
     });
   });
 
@@ -682,16 +674,16 @@ function setupEventListeners() {
   });
 
   // Scene filter pills
-  els.sceneFilterPills.forEach(pill => {
+  els.sceneFilterPills?.forEach(pill => {
     pill.addEventListener('click', () => {
-      els.sceneFilterPills.forEach(p => p.classList.remove('active', 'bg-dark-card', 'text-white'));
+      els.sceneFilterPills?.forEach(p => p.classList.remove('active', 'bg-dark-card', 'text-white'));
       pill.classList.add('active', 'bg-dark-card', 'text-white');
       filterScenes(pill.dataset.scene);
     });
   });
 
   // QC Error Presets
-  els.btnErrorPresets.forEach(btn => {
+  els.btnErrorPresets?.forEach(btn => {
     btn.addEventListener('click', () => {
       const err = btn.dataset.error;
       applyErrorPreset(err);
@@ -731,7 +723,7 @@ function setupEventListeners() {
 
 function switchTab(tabId) {
   state.activeTab = tabId;
-  els.tabContents.forEach(c => {
+  els.tabContents?.forEach(c => {
     if (c.id === tabId) {
       c.classList.remove('hidden');
     } else {
@@ -739,7 +731,7 @@ function switchTab(tabId) {
     }
   });
 
-  els.navTabs.forEach(t => {
+  els.navTabs?.forEach(t => {
     if (t.dataset.tab === tabId) {
       t.classList.add('active', 'bg-orange-600/20', 'text-orange-400', 'border-orange-500/30');
       t.classList.remove('text-slate-400');
@@ -4096,15 +4088,6 @@ function renderAll() {
 
 function updateContinuityLevelUI() {
   const level = state.project.continuityLevel || 'B';
-  els.btnLevels?.forEach(b => {
-    if (b.dataset.level === level) {
-      b.classList.add('bg-blue-600', 'text-white');
-      b.classList.remove('text-slate-400');
-    } else {
-      b.classList.remove('bg-blue-600', 'text-white');
-      b.classList.add('text-slate-400');
-    }
-  });
 
   els.btnLevelCards?.forEach(card => {
     const cardLevel = card.dataset.level;
