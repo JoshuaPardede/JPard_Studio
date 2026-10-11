@@ -2530,6 +2530,7 @@ async function callImageGeneration(promptText, aspectRatio = '9:16', referenceIm
       if (base64DataUrl && base64DataUrl.length > 100) {
         return base64DataUrl;
       }
+      if (b64) return `data:${mime};base64,${b64}`;
     }
   } catch (pollErr) {
     console.warn('[ImageGen] Pollinations AI engine exception:', pollErr);
