@@ -106,6 +106,13 @@ const els = {
 
   // Tab 1: Source & Universal Ingest Hub
   inputReference: document.getElementById('inputReference'),
+  btnExpandReferenceHub: document.getElementById('btnExpandReferenceHub'),
+  modalReferenceFocus: document.getElementById('modalReferenceFocus'),
+  btnMinimizeReferenceFocus: document.getElementById('btnMinimizeReferenceFocus'),
+  inputReferenceFocus: document.getElementById('inputReferenceFocus'),
+  focusWordCountBadge: document.getElementById('focusWordCountBadge'),
+  btnFocusPasteClipboard: document.getElementById('btnFocusPasteClipboard'),
+  btnSaveAndCloseFocus: document.getElementById('btnSaveAndCloseFocus'),
   smartDropContainer: document.getElementById('smartDropContainer'),
   dragOverlay: document.getElementById('dragOverlay'),
   inputImageRef: document.getElementById('inputImageRef'),
@@ -126,6 +133,8 @@ const els = {
 
   // Tab 2: Director
   btnLevels: document.querySelectorAll('.btn-level'),
+  btnLevelCards: document.querySelectorAll('.btn-level-card'),
+  continuitySelectedDescription: document.getElementById('continuitySelectedDescription'),
   btnBuildProductionPack: document.getElementById('btnBuildProductionPack'),
   masterPackEmpty: document.getElementById('masterPackEmpty'),
   masterPackContent: document.getElementById('masterPackContent'),
@@ -160,6 +169,10 @@ const els = {
   assetStatusText: document.getElementById('assetStatusText'),
   inputAssetPrompt: document.getElementById('inputAssetPrompt'),
   inputAssetNegative: document.getElementById('inputAssetNegative'),
+  btnAddAssetPromptRef: document.getElementById('btnAddAssetPromptRef'),
+  inputAssetPromptRefFile: document.getElementById('inputAssetPromptRefFile'),
+  assetPromptRefTray: document.getElementById('assetPromptRefTray'),
+  assetPromptRefEmpty: document.getElementById('assetPromptRefEmpty'),
   btnResetAssetPrompt: document.getElementById('btnResetAssetPrompt'),
   btnGenerateAssetSheet: document.getElementById('btnGenerateAssetSheet'),
   btnProceedToScenesFromAsset: document.getElementById('btnProceedToScenesFromAsset'),
@@ -327,6 +340,86 @@ function setupEventListeners() {
     if (state.project.assetSheet?.imageData) openImageModal(state.project.assetSheet.imageData);
   });
 
+  // Section 3: Add dedicated Prompt References
+  els.btnAddAssetPromptRef?.addEventListener('click', () => {
+    els.inputAssetPromptRefFile?.click();
+  });
+  els.inputAssetPromptRefFile?.addEventListener('change', async (e) => {
+    const files = Array.from(e.target.files || []).filter(isImageFile);
+    if (files.length === 0) return;
+    await handleAddAssetPromptRef(files);
+    e.target.value = '';
+  });
+
+  // Section 1: Focus Writing Mode Handlers
+  const updateFocusWordCount = () => {
+    const val = els.inputReferenceFocus?.value || '';
+    const words = val.trim() ? val.trim().split(/\s+/).length : 0;
+    const chars = val.length;
+    if (els.focusWordCountBadge) {
+      els.focusWordCountBadge.textContent = `${words} Kata • ${chars} Karakter`;
+    }
+  };
+
+  const openReferenceFocusModal = () => {
+    if (!els.modalReferenceFocus) return;
+    if (els.inputReferenceFocus && els.inputReference) {
+      els.inputReferenceFocus.value = els.inputReference.value || '';
+      updateFocusWordCount();
+    }
+    els.modalReferenceFocus.classList.remove('hidden');
+    setTimeout(() => {
+      els.inputReferenceFocus?.focus();
+    }, 50);
+  };
+
+  const closeReferenceFocusModal = () => {
+    if (!els.modalReferenceFocus) return;
+    if (els.inputReferenceFocus && els.inputReference) {
+      els.inputReference.value = els.inputReferenceFocus.value;
+      state.project.sourceInput = els.inputReference.value;
+      saveCurrentProject();
+    }
+    els.modalReferenceFocus.classList.add('hidden');
+    els.inputReference?.focus();
+  };
+
+  els.btnExpandReferenceHub?.addEventListener('click', openReferenceFocusModal);
+  els.btnMinimizeReferenceFocus?.addEventListener('click', closeReferenceFocusModal);
+  els.btnSaveAndCloseFocus?.addEventListener('click', closeReferenceFocusModal);
+
+  els.inputReferenceFocus?.addEventListener('input', () => {
+    if (els.inputReference) {
+      els.inputReference.value = els.inputReferenceFocus.value;
+      state.project.sourceInput = els.inputReference.value;
+    }
+    updateFocusWordCount();
+  });
+
+  els.btnFocusPasteClipboard?.addEventListener('click', async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && els.inputReferenceFocus) {
+        els.inputReferenceFocus.value = (els.inputReferenceFocus.value ? els.inputReferenceFocus.value + '\n\n' : '') + text;
+        if (els.inputReference) {
+          els.inputReference.value = els.inputReferenceFocus.value;
+          state.project.sourceInput = els.inputReference.value;
+          saveCurrentProject();
+        }
+        updateFocusWordCount();
+        showToast('📋 Teks berhasil ditempel di Focus Mode!');
+      }
+    } catch (err) {
+      showToast('Gunakan Cmd+V / Ctrl+V untuk menempel teks.');
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && els.modalReferenceFocus && !els.modalReferenceFocus.classList.contains('hidden')) {
+      closeReferenceFocusModal();
+    }
+  });
+
   els.inputAssetPrompt?.addEventListener('input', (e) => {
     if (!state.project.assetSheet) {
       state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
@@ -357,6 +450,16 @@ function setupEventListeners() {
     btn.addEventListener('click', () => {
       const p = btn.dataset.preset;
       applyPreset(p);
+    });
+  });
+
+  // Continuity Level Cards (Section 2)
+  els.btnLevelCards?.forEach(card => {
+    card.addEventListener('click', () => {
+      state.project.continuityLevel = card.dataset.level;
+      updateContinuityLevelUI();
+      saveCurrentProject();
+      showToast(`Continuity Lock: Level ${state.project.continuityLevel} aktif!`);
     });
   });
 
@@ -1682,19 +1785,40 @@ function handlePaste(e) {
   const clipboardData = e.clipboardData || window.clipboardData;
   if (!clipboardData) return;
 
-  // Tab 3 Context: If user is on Tab 3, paste image directly into Bank Asset!
+  const active = document.activeElement;
+  const isInputFocused = active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable);
+
+  // Check if clipboard has actual files or image items
+  const files = clipboardData.files;
+  const hasImageFile = files && files.length > 0 && Array.from(files).some(isImageFile);
+  const items = clipboardData.items;
+  let hasImageItem = false;
+  if (items && items.length > 0) {
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file' || (items[i].type && items[i].type.startsWith('image/'))) {
+        hasImageItem = true;
+        break;
+      }
+    }
+  }
+
+  // CRITICAL FIX: If focused in any input or textarea, and user is pasting regular text (NOT image file/blob),
+  // NEVER preventDefault or redirect text to Section 1! Allow native browser paste to occur naturally!
+  if (isInputFocused && !hasImageFile && !hasImageItem) {
+    return;
+  }
+
+  // Section 3 Context: If user is on Tab 3, paste image directly into Section 3 Prompt References!
   if (state.activeTab === 'tab-asset') {
-    const files = clipboardData.files;
     if (files && files.length > 0) {
       const imgFiles = Array.from(files).filter(isImageFile);
       if (imgFiles.length > 0) {
         e.preventDefault();
         e.stopPropagation();
-        handleAssetLibraryUpload({ target: { files: imgFiles, value: '' } });
+        handleAddAssetPromptRef(imgFiles);
         return;
       }
     }
-    const items = clipboardData.items;
     if (items && items.length > 0) {
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
@@ -1703,7 +1827,7 @@ function handlePaste(e) {
           if (blob && (isImageFile(blob) || (item.type && item.type.startsWith('image/')))) {
             e.preventDefault();
             e.stopPropagation();
-            handleAssetLibraryUpload({ target: { files: [blob], value: '' } });
+            handleAddAssetPromptRef([blob]);
             return;
           }
         }
@@ -1721,35 +1845,17 @@ function handlePaste(e) {
           e.stopPropagation();
           (async () => {
             const dataUrl = await compressImageIfNeeded(img.src);
-            const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-            const assetId = `lib_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
-            if (!state.project.assetLibrary) state.project.assetLibrary = [];
-            const activeCount = state.project.assetLibrary.filter(a => a.selectedForScenes).length;
-            const shouldSelect = activeCount < 5;
-            state.project.assetLibrary.unshift({
-              id: assetId,
-              title: 'Clipboard Asset',
-              type: 'character',
-              imageData: dataUrl,
-              createdAt: timeStr,
-              prompt: 'Pasted from Clipboard',
-              selectedForScenes: shouldSelect,
-              isPrimary: shouldSelect && activeCount === 0
+            if (!state.project.assetPromptReferences) state.project.assetPromptReferences = [];
+            const refId = `apr_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+            state.project.assetPromptReferences.push({
+              id: refId,
+              name: 'Clipboard Image Ref',
+              dataUrl: dataUrl,
+              createdAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
             });
-            if (shouldSelect && activeCount === 0) {
-              if (!state.project.assetSheet) {
-                state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
-              }
-              state.project.assetSheet.imageData = dataUrl;
-              state.project.assetSheet.title = 'Clipboard Asset';
-              state.project.assetSheet.isAnchorActive = true;
-            }
             saveCurrentProject();
-            renderAssetSheetUI();
-            renderAssetLibraryUI();
-            renderAnchorBannerUI();
-            renderScenesUI();
-            showToast('Asset dari clipboard berhasil disimpan ke Bank Asset!');
+            renderAssetPromptRefTray();
+            showToast('📸 Foto acuan khusus ditambahkan ke prompt Asset Sheet!');
           })();
           return;
         }
@@ -1760,7 +1866,6 @@ function handlePaste(e) {
   }
 
   // 1. Cek e.clipboardData.files (file gambar yang di-copy dari Finder / Desktop Mac)
-  const files = clipboardData.files;
   if (files && files.length > 0) {
     let handled = false;
     for (let i = 0; i < files.length; i++) {
@@ -1783,7 +1888,6 @@ function handlePaste(e) {
   }
 
   // 2. Cek e.clipboardData.items (screenshot langsung ke clipboard / copy paste objek)
-  const items = clipboardData.items;
   if (items && items.length > 0) {
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -1834,8 +1938,8 @@ function handlePaste(e) {
     }
   }
 
-  // 5. Teks biasa di luar textarea input
-  if (document.activeElement !== els.inputReference && plainText && plainText.length > 0) {
+  // 5. Teks biasa di luar textarea input (hanya jika sedang di Tab 1 / Universal Reference Hub)
+  if (state.activeTab === 'tab-input' && document.activeElement !== els.inputReference && plainText && plainText.length > 0) {
     e.preventDefault();
     els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + plainText;
     state.project.sourceInput = els.inputReference.value;
@@ -2548,12 +2652,24 @@ function getSceneReference(sceneNum) {
   const isSequential = state.project.sequentialChaining !== false;
   const scenes = state.project.scenes || [];
   
-  // Tab 3 Active Asset References (up to 5 assets)
-  const activeAssets = getSelectedAssetReferences(); // array of up to 5 items
-  const assetImages = activeAssets.map(a => a.imageData).filter(Boolean);
-  const assetTitles = activeAssets.map(a => a.title);
+  // Section 3 Asset Sheet & Selected Bank Assets (Always prioritizes Section 3 assets)
+  let assetImages = [];
+  if (state.project.assetSheet?.imageData && state.project.assetSheet?.isAnchorActive !== false) {
+    assetImages.push(state.project.assetSheet.imageData);
+  }
+  const activeAssets = getSelectedAssetReferences();
+  for (const a of activeAssets) {
+    if (a.imageData && !assetImages.includes(a.imageData)) {
+      assetImages.push(a.imageData);
+    }
+  }
 
-  // Fallback to Tab 1 image references if no Section 3 assets are active
+  const assetTitles = activeAssets.map(a => a.title);
+  if (state.project.assetSheet?.title && !assetTitles.includes(state.project.assetSheet.title)) {
+    assetTitles.unshift(state.project.assetSheet.title);
+  }
+
+  // Fallback to Tab 1 image references ONLY IF no Section 3 assets exist
   let baseImages = assetImages;
   let baseLabel = '';
   if (baseImages.length === 0) {
@@ -2563,10 +2679,10 @@ function getSceneReference(sceneNum) {
       baseLabel = `${baseImages.length} Foto Input Fase 01`;
     }
   } else {
-    baseLabel = `${activeAssets.length} Asset Sheet (${assetTitles.join(', ')})`;
+    baseLabel = `Asset Sheet Section 3${assetTitles.length > 0 ? ` (${assetTitles[0]})` : ''}`;
   }
 
-  // SCENE 1: Always anchors from all active Section 3 assets (or Tab 1 images)
+  // SCENE 1: Section 3 Asset Image -> Master Frame 1
   if (!isSequential || sceneNum === 1) {
     return {
       images: baseImages.slice(0, 5),
@@ -2577,15 +2693,22 @@ function getSceneReference(sceneNum) {
     };
   }
 
-  // SCENES 2, 3, 4, 5: Reference the immediate previous Scene (Scene N-1) PLUS active Section 3 assets
+  // SCENES 2, 3, 4, 5: Master Frame (N-1) + Asset Image dari Section 3 (Sequential Looping)
   if (sceneNum >= 2 && sceneNum <= 5) {
     const prevScene = scenes.find(s => s.number === sceneNum - 1);
     if (prevScene && prevScene.imageUrl) {
-      // Combine: previous scene image (priority 1) + up to 4 active Section 3 assets = max 5 images
-      const combined = [prevScene.imageUrl, ...baseImages.slice(0, 4)];
-      const assetCount = combined.length - 1;
-      const refText = assetCount > 0 
-        ? `Scene 0${sceneNum - 1} + ${assetCount} Asset Sheet (${assetTitles.slice(0, assetCount).join(', ')})`
+      // Prioritas 1: Master Frame sebelumnya (N-1)
+      // Prioritas 2: Gambar Asset dari Section 3
+      const combined = [prevScene.imageUrl];
+      for (const img of baseImages) {
+        if (!combined.includes(img) && combined.length < 5) {
+          combined.push(img);
+        }
+      }
+
+      const hasAsset = combined.length > 1;
+      const refText = hasAsset 
+        ? `Hasil Master Frame 0${sceneNum - 1} + Asset Section 3 (Sequential Looping)`
         : `Master Frame Scene 0${sceneNum - 1} (Sequential Chain)`;
 
       return {
@@ -2600,13 +2723,13 @@ function getSceneReference(sceneNum) {
     return {
       images: baseImages.slice(0, 5),
       image: baseImages[0] || null,
-      label: baseImages.length > 0 ? `${baseLabel} (Standby Scene 0${sceneNum - 1})` : 'Mandiri (Tanpa Reference)',
+      label: baseImages.length > 0 ? `${baseLabel} (Menunggu Master Frame 0${sceneNum - 1})` : 'Mandiri (Tanpa Reference)',
       isLoop: false,
       sourceType: 'fallback_assets'
     };
   }
 
-  // SCENE 6 (ENDING / LOOP): References Scene 5, Scene 1 (Loop Target), PLUS active Section 3 assets
+  // SCENE 6 (ENDING / LOOP MATCH CUT): References Scene 5 + Asset Section 3 + Scene 1 (Loop Target)
   if (sceneNum === 6) {
     const scene5 = scenes.find(s => s.number === 5);
     const scene1 = scenes.find(s => s.number === 1);
@@ -2615,16 +2738,21 @@ function getSceneReference(sceneNum) {
 
     const combined = [];
     if (prevImg) combined.push(prevImg);
-    if (loopTarget && !combined.includes(loopTarget)) combined.push(loopTarget);
-    // Add active assets up to 5 total images
+    // Masukkan Asset Section 3
     for (const img of baseImages) {
-      if (combined.length < 5 && !combined.includes(img)) combined.push(img);
+      if (!combined.includes(img) && combined.length < 4) {
+        combined.push(img);
+      }
+    }
+    // Masukkan Frame Scene 1 untuk Loop Match Cut
+    if (loopTarget && !combined.includes(loopTarget)) {
+      combined.push(loopTarget);
     }
 
     return {
       images: combined,
       image: prevImg || null,
-      label: scene5?.imageUrl ? `Scene 05 ➔ Loop Match ke Scene 01 + Asset Anchor` : `${baseLabel} ➔ Loop Match ke Scene 01`,
+      label: scene5?.imageUrl ? `Master Frame 05 + Asset Section 3 ➔ Loop Match ke Scene 01` : `${baseLabel} ➔ Loop Match ke Scene 01`,
       isLoop: true,
       sourceType: 'loop_chain',
       loopTargetImage: loopTarget
@@ -2674,10 +2802,12 @@ async function generateSceneImage(sceneNum) {
   // Build dynamic prompt with sequential chaining and loop rules
   let dynamicPrompt = scene.masterFramePrompt;
   if (state.project.sequentialChaining !== false) {
-    if (sceneNum > 1 && sceneNum < 6) {
-      dynamicPrompt += ` Maintain exact subject identity, wardrobe, materials, and lighting continuity from previous Scene 0${sceneNum - 1}.`;
+    if (sceneNum === 1) {
+      dynamicPrompt += ` Faithfully follow the subject identity, styling, textures, and details established in the provided Section 3 Asset Reference Sheet.`;
+    } else if (sceneNum > 1 && sceneNum < 6) {
+      dynamicPrompt += ` Maintain exact subject identity, wardrobe, facial features, materials, and lighting continuity from both the Section 3 Asset Sheet and previous Master Frame Scene 0${sceneNum - 1}.`;
     } else if (sceneNum === 6) {
-      dynamicPrompt += ` Seamless loop match cut ending designed to cycle back directly into Scene 01 opening frame with matching color grade, camera direction, and lighting balance.`;
+      dynamicPrompt += ` Seamless loop match cut ending: Maintain continuity from Scene 05 and Section 3 Asset Sheet, precision engineered to loop seamlessly back into Scene 01 opening frame with matching color grade, camera direction, and lighting balance.`;
     }
   }
 
@@ -2787,6 +2917,101 @@ function setAssetSheetType(type) {
   renderAssetSheetUI();
   renderAnchorBannerUI();
   showToast(`Tipe Asset diubah ke: ${state.project.assetSheet.title}`);
+}
+
+// Section 3: Prompt Specific Reference Images Handlers
+async function handleAddAssetPromptRef(files) {
+  if (!state.project.assetPromptReferences) state.project.assetPromptReferences = [];
+  const validFiles = Array.from(files).filter(f => f && (f.type?.startsWith('image/') || isImageFile(f)));
+  if (validFiles.length === 0) return;
+
+  for (const file of validFiles) {
+    await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const rawUrl = e.target.result;
+          const dataUrl = await compressImageIfNeeded(rawUrl);
+          const refId = `apr_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+          state.project.assetPromptReferences.push({
+            id: refId,
+            name: file.name || 'Foto Acuan',
+            dataUrl: dataUrl,
+            createdAt: new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
+          });
+        } catch (err) {
+          console.error('Error compressing asset prompt ref:', err);
+        }
+        resolve();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  saveCurrentProject();
+  renderAssetPromptRefTray();
+  showToast(`📸 ${validFiles.length} Foto acuan khusus Asset Sheet ditambahkan!`);
+}
+
+function removeAssetPromptRef(refId) {
+  if (!state.project.assetPromptReferences) return;
+  state.project.assetPromptReferences = state.project.assetPromptReferences.filter(r => r.id !== refId);
+  saveCurrentProject();
+  renderAssetPromptRefTray();
+  showToast('Foto acuan dihapus.');
+}
+
+function renderAssetPromptRefTray() {
+  if (!els.assetPromptRefTray) return;
+  const refs = state.project.assetPromptReferences || [];
+  
+  if (refs.length === 0) {
+    els.assetPromptRefTray.innerHTML = `
+      <div id="assetPromptRefEmpty" class="text-[11px] text-slate-500 italic py-2 flex items-center gap-1.5">
+        <i data-lucide="image" class="w-3.5 h-3.5 opacity-60"></i>
+        <span>Belum ada foto acuan khusus. Klik tombol di atas atau paste (Cmd+V) gambar saat di halaman ini.</span>
+      </div>
+    `;
+    lucide.createIcons();
+    return;
+  }
+
+  els.assetPromptRefTray.innerHTML = refs.map((ref, idx) => `
+    <div class="relative group shrink-0 w-14 h-14 rounded-lg overflow-hidden border border-purple-500/50 bg-[#06080d] shadow-sm">
+      <img src="${ref.dataUrl}" alt="${ref.name || 'Ref'}" class="w-full h-full object-cover cursor-pointer hover:scale-110 transition duration-200 btn-preview-prompt-ref" data-url="${ref.dataUrl}">
+      <button type="button" class="btn-remove-prompt-ref absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-red-600/90 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow" data-id="${ref.id}" title="Hapus foto acuan">
+        <i data-lucide="x" class="w-2.5 h-2.5"></i>
+      </button>
+      <span class="absolute bottom-0 inset-x-0 bg-black/75 text-[8px] text-center text-purple-200 font-mono truncate px-0.5 pointer-events-none">
+        Ref 0${idx + 1}
+      </span>
+    </div>
+  `).join('') + `
+    <button type="button" class="btn-add-more-prompt-ref shrink-0 w-14 h-14 rounded-lg border border-dashed border-purple-500/40 hover:border-purple-400 bg-purple-950/20 hover:bg-purple-900/30 flex flex-col items-center justify-center gap-0.5 text-purple-300 transition text-[10px] font-semibold" title="Tambah Foto Acuan Lagi">
+      <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+      <span>+ Foto</span>
+    </button>
+  `;
+
+  // Attach event listeners
+  els.assetPromptRefTray.querySelectorAll('.btn-preview-prompt-ref').forEach(img => {
+    img.addEventListener('click', () => {
+      openImageModal(img.dataset.url);
+    });
+  });
+
+  els.assetPromptRefTray.querySelectorAll('.btn-remove-prompt-ref').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      removeAssetPromptRef(btn.dataset.id);
+    });
+  });
+
+  els.assetPromptRefTray.querySelector('.btn-add-more-prompt-ref')?.addEventListener('click', () => {
+    els.inputAssetPromptRefFile?.click();
+  });
+
+  lucide.createIcons();
 }
 
 function resetAssetPrompt() {
@@ -2990,9 +3215,11 @@ async function handleGenerateAssetSheet() {
   els.assetCanvasContainer?.appendChild(tempCanvas);
 
   try {
-    // Pass Section 1 references if available so asset aligns with input photos
+    // Pass Section 3 specific prompt references first, then Section 1 references
+    const promptRefs = (state.project.assetPromptReferences || []).map(r => r.dataUrl).filter(Boolean);
     const sec1Refs = getImageReferences().map(r => r.dataUrl || `data:${r.mimeType || 'image/jpeg'};base64,${r.data}`).filter(Boolean);
-    const rawImgUrl = await callImageGeneration(promptText, '9:16', sec1Refs);
+    const combinedRefs = [...promptRefs, ...sec1Refs].slice(0, 5);
+    const rawImgUrl = await callImageGeneration(promptText, '9:16', combinedRefs);
     const imgUrl = await compressImageIfNeeded(rawImgUrl);
     if (!state.project.assetSheet) {
       state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
@@ -3272,8 +3499,9 @@ function renderAll() {
 }
 
 function updateContinuityLevelUI() {
+  const level = state.project.continuityLevel || 'B';
   els.btnLevels.forEach(b => {
-    if (b.dataset.level === state.project.continuityLevel) {
+    if (b.dataset.level === level) {
       b.classList.add('bg-blue-600', 'text-white');
       b.classList.remove('text-slate-400');
     } else {
@@ -3281,6 +3509,30 @@ function updateContinuityLevelUI() {
       b.classList.add('text-slate-400');
     }
   });
+
+  els.btnLevelCards?.forEach(card => {
+    const cardLevel = card.dataset.level;
+    const checkIcon = card.querySelector('.check-icon');
+    if (cardLevel === level) {
+      card.classList.remove('border-dark-border', 'hover:border-blue-500/50');
+      card.classList.add('border-blue-500', 'bg-blue-950/25', 'ring-2', 'ring-blue-500/30', 'shadow-lg');
+      checkIcon?.classList.remove('hidden');
+    } else {
+      card.classList.remove('border-blue-500', 'bg-blue-950/25', 'ring-2', 'ring-blue-500/30', 'shadow-lg');
+      card.classList.add('border-dark-border', 'hover:border-blue-500/50');
+      checkIcon?.classList.add('hidden');
+    }
+  });
+
+  if (els.continuitySelectedDescription) {
+    if (level === 'A') {
+      els.continuitySelectedDescription.innerHTML = `Fokus Terpilih: <strong>Level A (Gaya Visual &amp; Dunia)</strong> — AI akan merancang Master Pack yang mengunci warna, lighting, dan atmosfer estetika tanpa tokoh tetap.`;
+    } else if (level === 'B') {
+      els.continuitySelectedDescription.innerHTML = `Fokus Terpilih: <strong>Level B (Karakter Utama Tetap ⭐)</strong> — AI akan merancang Master Pack yang mengunci identitas wajah, rambut, dan pakaian tokoh di semua 6 scene.`;
+    } else {
+      els.continuitySelectedDescription.innerHTML = `Fokus Terpilih: <strong>Level C (Objek &amp; Produk Komersial)</strong> — AI akan merancang Master Pack yang mengunci detail bentuk 360°, logo, dan presisi produk di semua 6 scene.`;
+    }
+  }
 }
 
 function updateSceneBadge() {
@@ -3507,6 +3759,7 @@ function renderAssetSheetUI() {
 
   renderAssetVersionReel();
   renderAssetLibraryUI();
+  renderAssetPromptRefTray();
   lucide.createIcons();
 }
 

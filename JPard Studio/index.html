@@ -184,8 +184,17 @@
             <!-- Unified Smart Reference Ingest Hub (Drag & Drop + Paste Cmd+V) -->
             <div id="referenceHub" class="space-y-3">
               <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-                <span>Universal Reference Hub</span>
-                <span class="text-[10px] text-orange-400 font-semibold px-2 py-0.5 rounded bg-orange-500/10 border border-orange-500/20">Drop File / Paste (Cmd+V)</span>
+                <span class="flex items-center gap-1.5">
+                  <i data-lucide="sparkles" class="w-3.5 h-3.5 text-orange-400"></i>
+                  <span>Universal Reference Hub</span>
+                </span>
+                <div class="flex items-center gap-2">
+                  <button type="button" id="btnExpandReferenceHub" class="text-[11px] text-orange-400 hover:text-orange-300 font-semibold flex items-center gap-1 transition px-2 py-0.5 rounded bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30" title="Buka Mode Tulis Penuh / Popup Layar Besar">
+                    <i data-lucide="maximize-2" class="w-3 h-3"></i>
+                    <span>Perbesar Area Tulis</span>
+                  </button>
+                  <span class="text-[10px] text-slate-400 font-semibold px-2 py-0.5 rounded bg-dark-card border border-dark-border hidden sm:inline-block">Drop / Cmd+V</span>
+                </div>
               </label>
 
               <!-- Main Interactive Container with Drop & Paste -->
@@ -338,33 +347,92 @@
       <div class="space-y-6">
         
         <!-- Top Toolbar: Continuity Level & Trigger -->
-        <div class="p-5 rounded-2xl bg-dark-panel border border-dark-border flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div class="flex items-center gap-4 flex-wrap">
-            <div>
-              <span class="text-xs font-semibold text-slate-400 block mb-1">Continuity Level:</span>
-              <div class="inline-flex rounded-xl p-1 bg-[#0a0c14] border border-dark-border">
-                <button type="button" class="btn-level px-3 py-1.5 rounded-lg text-xs font-bold transition text-slate-400" data-level="A">
-                  Level A (Simple / Style)
-                </button>
-                <button type="button" class="btn-level px-3 py-1.5 rounded-lg text-xs font-bold transition text-slate-400" data-level="B">
-                  Level B (Character)
-                </button>
-                <button type="button" class="btn-level px-3 py-1.5 rounded-lg text-xs font-bold transition text-slate-400" data-level="C">
-                  Level C (Heavy / Product)
-                </button>
+        <div class="p-5 rounded-2xl bg-dark-panel border border-dark-border space-y-4">
+          <div>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-3">
+              <div>
+                <span class="text-xs font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-blue-400"></span>
+                  <span>Pilih Fokus Kontinuitas (Continuity Level)</span>
+                </span>
+                <p class="text-xs text-slate-400 mt-0.5">Tentukan elemen apa yang paling wajib dijaga konsistensinya di semua 6 scene.</p>
               </div>
+              <span class="text-xs font-mono text-slate-400 font-semibold bg-[#0a0c14] px-2.5 py-1 rounded-lg border border-dark-border self-start sm:self-auto">
+                9:16 Vertical • 6 Scene
+              </span>
             </div>
 
-            <div class="border-l border-dark-border pl-4 hidden md:block">
-              <span class="text-xs font-semibold text-slate-400 block mb-1">Format Video:</span>
-              <span class="text-xs font-mono text-slate-300 font-bold bg-[#0a0c14] px-2.5 py-1.5 rounded-lg border border-dark-border">9:16 Vertical • 6 Scene • ~60s</span>
+            <!-- 3 Interactive Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              
+              <!-- Card Level A -->
+              <div class="btn-level-card cursor-pointer p-4 rounded-xl border-2 transition flex flex-col justify-between space-y-3 bg-[#080a14] border-dark-border hover:border-blue-500/50" data-level="A">
+                <div class="space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-black text-blue-400 uppercase tracking-wider">Level A</span>
+                    <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">World &amp; Style</span>
+                  </div>
+                  <h4 class="text-sm font-bold text-white">Gaya Visual &amp; Dunia</h4>
+                  <p class="text-[11px] text-slate-400 leading-relaxed">
+                    <strong>Tanpa Karakter Tetap.</strong> Mengunci warna, pencahayaan sinematik, estetika atmosfer, dan arsitektur dunia secara menyeluruh.
+                  </p>
+                </div>
+                <div class="pt-2 border-t border-dark-border/60 text-[10px] text-slate-400 flex items-center justify-between">
+                  <span>Cocok: Dokumenter, Alam, Arsitektur</span>
+                  <i data-lucide="check-circle" class="w-4 h-4 check-icon hidden text-blue-400"></i>
+                </div>
+              </div>
+
+              <!-- Card Level B (Popular / Recommended) -->
+              <div class="btn-level-card cursor-pointer p-4 rounded-xl border-2 transition flex flex-col justify-between space-y-3 bg-[#080a14] border-blue-500/80 bg-blue-950/25 shadow-lg shadow-blue-500/10" data-level="B">
+                <div class="space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-black text-blue-400 uppercase tracking-wider">Level B</span>
+                    <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold">⭐ REKOMENDASI</span>
+                  </div>
+                  <h4 class="text-sm font-bold text-white">Karakter Utama Tetap</h4>
+                  <p class="text-[11px] text-slate-300 leading-relaxed">
+                    <strong>Kunci Identitas Tokoh.</strong> Mengunci wajah, rambut, pakaian, dan proporsi tokoh utama agar 100% konsisten dari Scene 1 s/d Scene 6.
+                  </p>
+                </div>
+                <div class="pt-2 border-t border-dark-border/60 text-[10px] text-blue-300 font-semibold flex items-center justify-between">
+                  <span>Cocok: Cerita Naratif, Drama, Host/Creator</span>
+                  <i data-lucide="check-circle" class="w-4 h-4 check-icon text-blue-400"></i>
+                </div>
+              </div>
+
+              <!-- Card Level C -->
+              <div class="btn-level-card cursor-pointer p-4 rounded-xl border-2 transition flex flex-col justify-between space-y-3 bg-[#080a14] border-dark-border hover:border-blue-500/50" data-level="C">
+                <div class="space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-black text-blue-400 uppercase tracking-wider">Level C</span>
+                    <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">Product &amp; Object</span>
+                  </div>
+                  <h4 class="text-sm font-bold text-white">Objek &amp; Produk Komersial</h4>
+                  <p class="text-[11px] text-slate-400 leading-relaxed">
+                    <strong>Kunci Presisi Produk 360°.</strong> Mengunci detail logo, bahan material, tekstur makro, dan sudut pandang produk komersial.
+                  </p>
+                </div>
+                <div class="pt-2 border-t border-dark-border/60 text-[10px] text-slate-400 flex items-center justify-between">
+                  <span>Cocok: Iklan Produk, Gadget, Kuliner</span>
+                  <i data-lucide="check-circle" class="w-4 h-4 check-icon hidden text-blue-400"></i>
+                </div>
+              </div>
+
+            </div>
+
+            <!-- Explanation & Action Footer in Toolbar -->
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-dark-border/60">
+              <div class="flex items-center gap-2 text-xs text-slate-300">
+                <i data-lucide="info" class="w-4 h-4 text-blue-400 shrink-0"></i>
+                <span id="continuitySelectedDescription">Fokus Terpilih: <strong>Level B (Karakter Utama)</strong> — AI akan merancang Master Pack yang mengunci konsistensi tokoh di 6 scene.</span>
+              </div>
+              <button id="btnBuildProductionPack" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition shrink-0">
+                <i data-lucide="film" class="w-4 h-4"></i>
+                <span>GENERATE MASTER PRODUCTION PACK</span>
+              </button>
             </div>
           </div>
-
-          <button id="btnBuildProductionPack" class="px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs flex items-center gap-2 shadow-lg shadow-blue-600/30 transition">
-            <i data-lucide="film" class="w-4 h-4"></i>
-            <span>GENERATE MASTER PRODUCTION PACK</span>
-          </button>
         </div>
 
         <!-- Master Pack Details Container -->
@@ -532,6 +600,33 @@
             <div class="space-y-2">
               <label class="block text-xs font-bold text-slate-300 uppercase tracking-wider">Negative Constraints</label>
               <input id="inputAssetNegative" type="text" class="w-full bg-[#0a0c14] border border-dark-border focus:border-purple-500 rounded-xl p-3 text-xs text-slate-300 focus:outline-none transition font-mono" value="multiple different faces, distorted anatomy, blur, text, watermark, split framing">
+            </div>
+
+            <!-- Section 3 Custom Reference Images Strip (Acuan Visual Khusus Pembuatan Asset) -->
+            <div id="assetPromptRefContainer" class="space-y-2 p-3.5 rounded-xl bg-[#090b14] border border-purple-500/25">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="image-plus" class="w-4 h-4 text-purple-400"></i>
+                  <span class="text-xs font-bold text-slate-200">Foto Acuan Khusus untuk Asset Sheet (Opsional)</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <input id="inputAssetPromptRefFile" type="file" accept="image/*" multiple class="hidden">
+                  <button type="button" id="btnAddAssetPromptRef" class="px-2.5 py-1 rounded-lg bg-dark-card hover:bg-dark-hover border border-dark-border text-[11px] font-semibold text-purple-300 hover:text-white transition flex items-center gap-1">
+                    <i data-lucide="upload" class="w-3 h-3 text-purple-400"></i>
+                    <span>+ Tambah Foto</span>
+                  </button>
+                </div>
+              </div>
+              <p class="text-[11px] text-slate-400 leading-relaxed">
+                Punya foto/desain acuan khusus untuk karakter atau objek ini? Upload atau paste (Cmd+V) di sini agar Banana Pro memadukan prompt teks dengan foto referensi Anda.
+              </p>
+              
+              <!-- Thumbnails Tray below prompt -->
+              <div id="assetPromptRefTray" class="flex items-center gap-2.5 overflow-x-auto pt-1 no-scrollbar min-h-[60px]">
+                <div id="assetPromptRefEmpty" class="text-[11px] text-slate-500 italic py-2">
+                  Belum ada foto acuan khusus. Klik tombol di atas atau paste (Cmd+V) gambar saat di halaman ini.
+                </div>
+              </div>
             </div>
 
             <!-- Explanatory note -->
@@ -1066,6 +1161,57 @@
           <span>Download Master Frame 9:16</span>
         </a>
       </div>
+    </div>
+  <!-- Reference Focus / Fullscreen Writing Modal (Section 1) -->
+  <div id="modalReferenceFocus" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex items-center justify-center p-3 sm:p-6 transition-all duration-300">
+    <div class="bg-[#090c16] border border-orange-500/40 rounded-2xl max-w-4xl w-full h-[88vh] flex flex-col shadow-2xl overflow-hidden relative">
+      
+      <!-- Modal Header -->
+      <div class="flex items-center justify-between p-4 sm:px-6 border-b border-dark-border bg-[#070912]">
+        <div class="flex items-center gap-2.5">
+          <span class="w-3 h-3 rounded-full bg-orange-400 animate-pulse"></span>
+          <div>
+            <h3 class="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+              <span>Universal Reference Hub</span>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/30">Focus Writing Mode</span>
+            </h3>
+            <p class="text-[11px] text-slate-400">Area tulis leluasa untuk transkrip panjang, ide cerita detail, link artikel, atau naskah.</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3">
+          <div id="focusWordCountBadge" class="text-[11px] font-mono text-slate-400 hidden sm:block">
+            0 Kata • 0 Karakter
+          </div>
+          <button id="btnMinimizeReferenceFocus" type="button" class="px-3 py-1.5 rounded-xl bg-dark-card hover:bg-dark-hover border border-dark-border text-xs font-semibold text-slate-200 hover:text-white transition flex items-center gap-1.5 shadow" title="Kembalikan ke Tampilan Normal (Esc)">
+            <i data-lucide="minimize-2" class="w-4 h-4 text-orange-400"></i>
+            <span class="hidden sm:inline">Kembalikan Ukuran</span>
+            <kbd class="text-[10px] text-slate-500 font-mono">Esc</kbd>
+          </button>
+        </div>
+      </div>
+
+      <!-- Modal Body (Textarea Area) -->
+      <div class="flex-1 p-4 sm:p-6 flex flex-col space-y-3 overflow-hidden bg-[#0a0d18]">
+        <textarea id="inputReferenceFocus" class="w-full flex-1 bg-transparent border border-dark-border/80 focus:border-orange-500 rounded-xl p-4 text-sm sm:text-base text-slate-100 placeholder-slate-500 focus:outline-none transition resize-none font-sans leading-relaxed" placeholder="Tulis atau paste ide cerita panjang, alur narasi, transkrip video, naskah podcast, atau catatan riset Anda di sini secara bebas tanpa batasan ruang..."></textarea>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="p-3.5 sm:px-6 border-t border-dark-border bg-[#070912] flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div class="flex items-center gap-2 text-slate-400 text-[11px]">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+          <span>Teks tersinkronisasi otomatis secara realtime ke tampilan utama.</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" id="btnFocusPasteClipboard" class="px-3 py-1.5 rounded-lg bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 text-orange-300 font-semibold text-xs transition flex items-center gap-1">
+            <i data-lucide="clipboard" class="w-3.5 h-3.5"></i>
+            <span>Paste dari Clipboard</span>
+          </button>
+          <button type="button" id="btnSaveAndCloseFocus" class="px-4 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs transition shadow-lg shadow-orange-600/20">
+            Selesai &amp; Kembali
+          </button>
+        </div>
+      </div>
+
     </div>
   </div>
 
