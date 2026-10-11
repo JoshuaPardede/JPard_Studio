@@ -54,10 +54,10 @@ function getImageReferences() {
   return [];
 }
 
-let savedModel = localStorage.getItem(STORAGE_KEYS.MODEL) || 'gemini-2.5-flash';
-if (!savedModel || savedModel.includes('3.8') || savedModel.includes('3.5') || savedModel.includes('3.7')) {
-  savedModel = 'gemini-2.5-flash';
-  localStorage.setItem(STORAGE_KEYS.MODEL, 'gemini-2.5-flash');
+let savedModel = localStorage.getItem(STORAGE_KEYS.MODEL) || 'gemini-3.8-flash';
+if (!savedModel || savedModel.includes('1.5') || savedModel.includes('2.0') || savedModel === 'gemini-2.5-flash') {
+  savedModel = 'gemini-3.8-flash';
+  localStorage.setItem(STORAGE_KEYS.MODEL, 'gemini-3.8-flash');
 }
 
 let state = {
@@ -1379,12 +1379,14 @@ async function callGemini(promptText, systemInstruction = '', inlineDataParts = 
     return null;
   }
 
-  const preferredModel = (state.model && !state.model.includes('3.8') && !state.model.includes('3.5') && !state.model.includes('3.7')) ? state.model : 'gemini-2.5-flash';
+  const preferredModel = (state.model && !state.model.includes('1.5') && !state.model.includes('2.0')) ? state.model : 'gemini-3.8-flash';
   const candidateModels = Array.from(new Set([
     preferredModel,
-    'gemini-2.5-flash',
-    'gemini-2.0-flash',
-    'gemini-1.5-flash'
+    'gemini-3.8-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.1-pro-preview',
+    'gemini-2.5-flash'
   ]));
 
   let lastError = null;
@@ -2810,8 +2812,8 @@ async function callImageGeneration(promptText, aspectRatio = '9:16', referenceIm
       console.warn('[ImageGen] Imagen 3 predict exception:', err);
     }
 
-    // Strategy 1B: Google Gemini 2.5 Flash Image & 3.1 Flash Image (:generateContent)
-    const geminiModels = ['gemini-2.5-flash-image', 'gemini-3.1-flash-image'];
+    // Strategy 1B: Google Gemini 3.1 Flash Image & Nano Banana Pro (:generateContent)
+    const geminiModels = ['gemini-3.1-flash-image', 'gemini-3-pro-image', 'gemini-3.1-flash-lite-image', 'gemini-2.5-flash-image'];
     const parts = [];
 
     if (refList.length > 0) {
