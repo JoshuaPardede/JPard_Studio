@@ -427,6 +427,22 @@ function setupEventListeners() {
   });
   els.inputAssetLibraryUpload?.addEventListener('change', handleAssetLibraryUpload);
 
+  const handleAssetDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const files = Array.from(e.dataTransfer?.files || []).filter(isImageFile);
+    if (files.length > 0) {
+      handleAssetLibraryUpload({ target: { files: files, value: '' } });
+    }
+  };
+  const preventDragDefault = (e) => { e.preventDefault(); e.stopPropagation(); };
+  els.assetCanvasContainer?.addEventListener('dragenter', preventDragDefault);
+  els.assetCanvasContainer?.addEventListener('dragover', preventDragDefault);
+  els.assetCanvasContainer?.addEventListener('drop', handleAssetDrop);
+  els.assetLibrarySection?.addEventListener('dragenter', preventDragDefault);
+  els.assetLibrarySection?.addEventListener('dragover', preventDragDefault);
+  els.assetLibrarySection?.addEventListener('drop', handleAssetDrop);
+
   // Tab 4: Sequential Chaining Toggle
   els.chkSequentialChaining?.addEventListener('change', (e) => {
     state.project.sequentialChaining = e.target.checked;
@@ -1655,6 +1671,35 @@ function handlePaste(e) {
   const clipboardData = e.clipboardData || window.clipboardData;
   if (!clipboardData) return;
 
+  // Tab 3 Context: If user is on Tab 3, paste image directly into Bank Asset!
+  if (state.activeTab === 'tab-asset') {
+    const files = clipboardData.files;
+    if (files && files.length > 0) {
+      const imgFiles = Array.from(files).filter(isImageFile);
+      if (imgFiles.length > 0) {
+        e.preventDefault();
+        e.stopPropagation();
+        handleAssetLibraryUpload({ target: { files: imgFiles, value: '' } });
+        return;
+      }
+    }
+    const items = clipboardData.items;
+    if (items && items.length > 0) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind === 'file' || (item.type && item.type.startsWith('image/'))) {
+          const blob = item.getAsFile();
+          if (blob && (isImageFile(blob) || (item.type && item.type.startsWith('image/')))) {
+            e.preventDefault();
+            e.stopPropagation();
+            handleAssetLibraryUpload({ target: { files: [blob], value: '' } });
+            return;
+          }
+        }
+      }
+    }
+  }
+
   // 1. Cek e.clipboardData.files (file gambar yang di-copy dari Finder / Desktop Mac)
   const files = clipboardData.files;
   if (files && files.length > 0) {
@@ -2142,128 +2187,138 @@ async function callImageGeneration(promptText, aspectRatio = '9:16', referenceIm
   } else if (referenceImages) {
     refList = [referenceImages];
   }
-  // Clamp to max 5 references
   refList = refList.slice(0, 5);
 
-  // Primary Call: Google Gemini Banana Pro via official Interactions API
-  const interactionsEndpoint = `https://generativelanguage.googleapis.com/v1beta/interactions`;
-  
-  let inputPayload;
+  // Build multimodal parts for Gemini API
+  const parts = [];
   if (refList.length > 0) {
     const textPrompt = refList.length === 1 
-      ? `Create the scene master frame adhering to this prompt: ${cleanPrompt}. Maintain exact subject appearance, character design, materials, and lighting consistency from the reference image attached.`
-      : `Create the scene master frame adhering to this prompt: ${cleanPrompt}. Maintain exact subject identity, character consistency, clothing, object details, colors, textures, and lighting matching the ${refList.length} attached visual reference assets.`;
+      ? `Generate a vertical 9:16 high-quality image adhering strictly to this prompt: ${cleanPrompt}. Maintain exact character identity, visual consistency, outfit, object design, lighting, and materials matching the attached reference image.`
+      : `Generate a vertical 9:16 high-quality image adhering strictly to this prompt: ${cleanPrompt}. Maintain exact character appearance, object identity, colors, textures, and lighting consistency matching all ${refList.length} attached visual reference assets.`;
+    parts.push({ text: textPrompt });
 
-    inputPayload = [
-      {
-        type: 'text',
-        text: textPrompt
-      },
-      ...refList.map(ref => {
-        const rawBase64 = ref.startsWith('data:') ? ref.split(',')[1] : ref;
-        const mime = ref.startsWith('data:') ? (ref.split(';')[0].replace('data:', '') || 'image/jpeg') : 'image/jpeg';
-        return {
-          type: 'image',
-          data: rawBase64,
-          mime_type: mime
-        };
-      })
-    ];
+    for (const ref of refList) {
+      const rawBase64 = ref.startsWith('data:') ? ref.split(',')[1] : ref;
+      const mime = ref.startsWith('data:') ? (ref.split(';')[0].replace('data:', '') || 'image/jpeg') : 'image/jpeg';
+      parts.push({
+        inlineData: {
+          mimeType: mime,
+          data: rawBase64
+        }
+      });
+    }
   } else {
-    inputPayload = cleanPrompt;
-  }
-
-  const interactionPayload = {
-    model: 'gemini-3.1-flash-image',
-    input: inputPayload,
-    response_format: {
-      type: 'image',
-      aspect_ratio: aspectRatio,
-      image_size: '1K'
-    }
-  };
-
-  const res = await fetch(interactionsEndpoint, {
-    method: 'POST',
-    headers: {
-      'x-goog-api-key': apiKey,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(interactionPayload)
-  });
-
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    const errMsg = errData?.error?.message || `HTTP error ${res.status}`;
-    
-    // Fallback: If interactions API not enabled for this key, try Google Imagen 3 on Gemini API
-    console.warn(`Gemini Banana Pro interactions notice: ${errMsg}. Mencoba endpoint Gemini Imagen...`);
-    const imagenEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${encodeURIComponent(apiKey)}`;
-    const imagenRes = await fetch(imagenEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        instances: [{ prompt: `${cleanPrompt}, 9:16 vertical ratio, 8k resolution, cinematic masterpiece` }],
-        parameters: { sampleCount: 1, aspectRatio: '9:16' }
-      })
+    parts.push({
+      text: `${cleanPrompt}, 9:16 vertical aspect ratio, high resolution, cinematic masterpiece`
     });
-
-    if (imagenRes.ok) {
-      const imgData = await imagenRes.json();
-      const b64 = imgData?.predictions?.[0]?.bytesBase64Encoded;
-      if (b64) return `data:image/png;base64,${b64}`;
-    }
-
-    throw new Error(`Google Gemini Banana Pro: ${errMsg}`);
   }
 
-  const data = await res.json();
-  
-  // Parse response from Google Gemini Banana Pro
-  let base64Data = null;
-  let mimeType = 'image/jpeg';
+  const candidateModels = [
+    'gemini-3.1-flash-image',
+    'gemini-2.5-flash-image',
+    'gemini-3-pro-image'
+  ];
 
-  // Format 1: Output image convenience property
-  if (data?.output_image?.data) {
-    base64Data = data.output_image.data;
-    mimeType = data.output_image.mime_type || 'image/jpeg';
-  } else if (data?.interaction?.output_image?.data) {
-    base64Data = data.interaction.output_image.data;
-    mimeType = data.interaction.output_image.mime_type || 'image/jpeg';
-  }
+  let lastErrorMessage = '';
 
-  // Format 2: Steps timeline
-  if (!base64Data && data?.steps) {
-    for (const step of data.steps) {
-      if (step.content) {
-        for (const item of step.content) {
-          if (item.type === 'image' && item.data) {
-            base64Data = item.data;
-            mimeType = item.mime_type || item.mimeType || 'image/jpeg';
-            break;
+  // 1. Primary Strategy: Official Gemini generateContent API
+  for (const model of candidateModels) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const payload = {
+        contents: [{ parts: parts }],
+        generationConfig: {
+          responseModalities: ["IMAGE", "TEXT"]
+        }
+      };
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        const msg = errJson?.error?.message || `HTTP ${res.status}`;
+        lastErrorMessage = `${model}: ${msg}`;
+        console.warn(`[ImageGen] ${model} error: ${msg}. Trying next candidate...`);
+        continue;
+      }
+
+      const data = await res.json();
+      if (data?.candidates?.[0]?.content?.parts) {
+        for (const part of data.candidates[0].content.parts) {
+          if (part.inlineData?.data) {
+            const mime = part.inlineData.mimeType || 'image/jpeg';
+            return `data:${mime};base64,${part.inlineData.data}`;
           }
         }
       }
-      if (base64Data) break;
+    } catch (fetchErr) {
+      lastErrorMessage = `${model}: ${fetchErr.message}`;
+      console.warn(`[ImageGen] ${model} fetch exception:`, fetchErr);
     }
   }
 
-  // Format 3: Candidates inlineData (generateContent style)
-  if (!base64Data && data?.candidates?.[0]?.content?.parts) {
-    for (const part of data.candidates[0].content.parts) {
-      if (part.inlineData?.data) {
-        base64Data = part.inlineData.data;
-        mimeType = part.inlineData.mimeType || 'image/jpeg';
-        break;
+  // 2. Secondary Strategy: Official Interactions Endpoint (if active on user key)
+  try {
+    const interactionsEndpoint = `https://generativelanguage.googleapis.com/v1beta/interactions`;
+    let inputPayload;
+    if (refList.length > 0) {
+      inputPayload = [
+        {
+          type: 'text',
+          text: `Create 9:16 master frame: ${cleanPrompt}. Maintain continuity with references.`
+        },
+        ...refList.map(ref => ({
+          type: 'image',
+          data: ref.startsWith('data:') ? ref.split(',')[1] : ref,
+          mime_type: ref.startsWith('data:') ? (ref.split(';')[0].replace('data:', '') || 'image/jpeg') : 'image/jpeg'
+        }))
+      ];
+    } else {
+      inputPayload = cleanPrompt;
+    }
+
+    const intRes = await fetch(interactionsEndpoint, {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': apiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gemini-3.1-flash-image',
+        input: inputPayload,
+        response_format: { type: 'image', aspect_ratio: aspectRatio, image_size: '1K' }
+      })
+    });
+
+    if (intRes.ok) {
+      const data = await intRes.json();
+      let b64 = data?.output_image?.data || data?.interaction?.output_image?.data;
+      let mime = data?.output_image?.mime_type || 'image/jpeg';
+      if (!b64 && data?.steps) {
+        for (const step of data.steps) {
+          if (step.content) {
+            for (const item of step.content) {
+              if (item.type === 'image' && item.data) {
+                b64 = item.data;
+                mime = item.mime_type || item.mimeType || 'image/jpeg';
+                break;
+              }
+            }
+          }
+          if (b64) break;
+        }
       }
+      if (b64) return `data:${mime};base64,${b64}`;
     }
+  } catch (intErr) {
+    console.warn('[ImageGen] Interactions fallback skipped:', intErr);
   }
 
-  if (base64Data) {
-    return `data:${mimeType};base64,${base64Data}`;
-  }
-
-  throw new Error('Google Gemini Banana Pro tidak mengembalikan data gambar yang valid.');
+  throw new Error(lastErrorMessage || 'Google Gemini Banana Pro tidak mengembalikan data gambar. Pastikan API Key Anda memiliki akses ke Gemini API.');
 }
 
 // ------------------------------------------
@@ -2674,12 +2729,14 @@ function rollbackAssetVersion(versionId) {
 }
 
 async function handleGenerateAssetSheet() {
-  if (!state.project.masterPack) {
-    showToast('Selesaikan Fase 02 (Director Lock) terlebih dahulu!');
-    return;
+  let promptText = els.inputAssetPrompt?.value?.trim() || state.project.assetSheet?.prompt;
+  if (!promptText) {
+    const currentType = state.project.assetSheet?.type || (state.project.continuityLevel === 'B' ? 'character' : (state.project.continuityLevel === 'C' ? 'object' : 'world'));
+    const generated = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack, currentType);
+    promptText = generated.prompt;
+    if (els.inputAssetPrompt) els.inputAssetPrompt.value = promptText;
   }
 
-  const promptText = els.inputAssetPrompt?.value?.trim() || state.project.assetSheet?.prompt;
   if (!promptText) {
     showToast('Prompt Asset Sheet belum diisi.');
     return;
@@ -2700,7 +2757,9 @@ async function handleGenerateAssetSheet() {
   els.assetCanvasContainer?.appendChild(tempCanvas);
 
   try {
-    const rawImgUrl = await callImageGeneration(promptText, '9:16');
+    // Pass Section 1 references if available so asset aligns with input photos
+    const sec1Refs = getImageReferences().map(r => r.dataUrl || `data:${r.mimeType || 'image/jpeg'};base64,${r.data}`).filter(Boolean);
+    const rawImgUrl = await callImageGeneration(promptText, '9:16', sec1Refs);
     const imgUrl = await compressImageIfNeeded(rawImgUrl);
     if (!state.project.assetSheet) {
       state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
