@@ -25,6 +25,7 @@ const DEFAULT_PROJECT = {
   imageReferences: [],
   soundtrack: null,
   assetSheet: null,
+  lastSyncedNarrative: '',
   assetLibrary: [],
   sequentialChaining: true,
   theme: 'bebas',
@@ -53,10 +54,10 @@ function getImageReferences() {
   return [];
 }
 
-let savedModel = localStorage.getItem(STORAGE_KEYS.MODEL) || 'gemini-3.8-flash';
-if (!savedModel || savedModel.includes('2.5') || savedModel.includes('1.5') || savedModel.includes('2.0')) {
-  savedModel = 'gemini-3.8-flash';
-  localStorage.setItem(STORAGE_KEYS.MODEL, 'gemini-3.8-flash');
+let savedModel = localStorage.getItem(STORAGE_KEYS.MODEL) || 'gemini-2.5-flash';
+if (!savedModel || savedModel.includes('3.8') || savedModel.includes('3.5') || savedModel.includes('3.7')) {
+  savedModel = 'gemini-2.5-flash';
+  localStorage.setItem(STORAGE_KEYS.MODEL, 'gemini-2.5-flash');
 }
 
 let state = {
@@ -118,8 +119,6 @@ const els = {
   dragOverlay: document.getElementById('dragOverlay'),
   inputImageRef: document.getElementById('inputImageRef'),
   attachedMediaTray: document.getElementById('attachedMediaTray'),
-  imagePreviewImg: document.getElementById('imagePreviewImg'),
-  btnRemoveImage: document.getElementById('btnRemoveImage'),
   btnBrowseReferenceFile: document.getElementById('btnBrowseReferenceFile'),
   btnPasteFromClipboard: document.getElementById('btnPasteFromClipboard'),
   selectTheme: document.getElementById('selectTheme'),
@@ -133,8 +132,9 @@ const els = {
   btnProceedToDirector: document.getElementById('btnProceedToDirector'),
 
   // Tab 2: Director
-  btnLevels: document.querySelectorAll('.btn-level'),
   btnLevelCards: document.querySelectorAll('.btn-level-card'),
+  continuityBadge: document.getElementById('continuityBadge'),
+  continuityTitle: document.getElementById('continuityTitle'),
   continuitySelectedDescription: document.getElementById('continuitySelectedDescription'),
   btnBuildProductionPack: document.getElementById('btnBuildProductionPack'),
   masterPackEmpty: document.getElementById('masterPackEmpty'),
@@ -168,6 +168,9 @@ const els = {
   btnUploadCustomAsset: document.getElementById('btnUploadCustomAsset'),
   assetStatusBox: document.getElementById('assetStatusBox'),
   assetStatusText: document.getElementById('assetStatusText'),
+  assetNarrativeLinkBox: document.getElementById('assetNarrativeLinkBox'),
+  assetNarrativeSnippetText: document.getElementById('assetNarrativeSnippetText'),
+  btnHeaderSyncAsset: document.getElementById('btnHeaderSyncAsset'),
   inputAssetPrompt: document.getElementById('inputAssetPrompt'),
   inputAssetNegative: document.getElementById('inputAssetNegative'),
   btnAddAssetPromptRef: document.getElementById('btnAddAssetPromptRef'),
@@ -181,7 +184,6 @@ const els = {
 
   // Tab 4: Scenes
   anchorActiveBanner: document.getElementById('anchorActiveBanner'),
-  anchorThumbBox: document.getElementById('anchorThumbBox'),
   anchorThumbTray: document.getElementById('anchorThumbTray'),
   anchorBadgeStatus: document.getElementById('anchorBadgeStatus'),
   anchorDescriptionText: document.getElementById('anchorDescriptionText'),
@@ -336,6 +338,7 @@ function setupEventListeners() {
 
   els.btnGenerateAssetSheet?.addEventListener('click', handleGenerateAssetSheet);
   els.btnSyncAssetPrompt?.addEventListener('click', syncAssetPromptFromNarrative);
+  els.btnHeaderSyncAsset?.addEventListener('click', syncAssetPromptFromNarrative);
   els.btnResetAssetPrompt?.addEventListener('click', resetAssetPrompt);
   els.btnUploadCustomAsset?.addEventListener('click', () => els.inputCustomAssetFile?.click());
   els.inputCustomAssetFile?.addEventListener('change', handleCustomAssetUpload);
@@ -539,16 +542,8 @@ function setupEventListeners() {
   els.inputImageRef?.addEventListener('change', handleImageUpload);
   els.btnPasteFromClipboard?.addEventListener('click', handleClipboardButtonPaste);
   
-  // Universal Paste Event Listeners (Window, Document, Container, Textarea)
+  // Universal Paste Event Listener (Single clean window listener)
   window.addEventListener('paste', handlePaste);
-  document.addEventListener('paste', handlePaste);
-  els.inputReference?.addEventListener('paste', handlePaste);
-  els.smartDropContainer?.addEventListener('paste', handlePaste);
-
-  els.btnRemoveImage?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    removeImageRef();
-  });
 
   // Tab 3: Asset Library & Bank Referensi Listeners
   els.btnUploadToAssetLibrary?.addEventListener('click', () => {
@@ -662,15 +657,19 @@ function switchTab(tabId) {
     }
   });
 
-  // When opening Section 3 (Asset Sheet), ensure prompt reflects current narrative if it was generic or missing
+  // When opening Section 3 (Asset Sheet), ensure prompt reflects current narrative
   if (tabId === 'tab-asset') {
     const rawInput = state.project.sourceInput?.trim() || els.inputReference?.value?.trim() || '';
     const currentPrompt = state.project.assetSheet?.prompt || '';
     const isGeneric = !currentPrompt || currentPrompt.includes('Main subject') || currentPrompt.includes('Daily Short') || currentPrompt.includes('Sosok pengamat');
-    if (rawInput && (!state.project.assetSheet || isGeneric)) {
+    const narrativeChanged = rawInput && state.project.lastSyncedNarrative && rawInput !== state.project.lastSyncedNarrative;
+
+    if (rawInput && (!state.project.assetSheet || !currentPrompt || isGeneric || narrativeChanged)) {
       state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
-      renderAssetSheetUI();
+      state.project.lastSyncedNarrative = rawInput;
+      saveCurrentProject();
     }
+    renderAssetSheetUI();
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1292,49 +1291,69 @@ async function callGemini(promptText, systemInstruction = '', inlineDataParts = 
     return null;
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${state.model}:generateContent?key=${encodeURIComponent(state.apiKey.trim())}`;
+  const preferredModel = (state.model && !state.model.includes('3.8') && !state.model.includes('3.5') && !state.model.includes('3.7')) ? state.model : 'gemini-2.5-flash';
+  const candidateModels = Array.from(new Set([
+    preferredModel,
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash'
+  ]));
 
-  const parts = [{ text: promptText }];
-  if (inlineDataParts && inlineDataParts.length > 0) {
-    inlineDataParts.forEach(p => parts.push(p));
-  }
+  let lastError = null;
 
-  const payload = {
-    contents: [
-      {
-        parts: parts
+  for (const model of candidateModels) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(state.apiKey.trim())}`;
+
+      const parts = [{ text: promptText }];
+      if (inlineDataParts && inlineDataParts.length > 0) {
+        inlineDataParts.forEach(p => parts.push(p));
       }
-    ]
-  };
 
-  if (systemInstruction) {
-    payload.systemInstruction = {
-      parts: [{ text: systemInstruction }]
-    };
-  }
+      const payload = {
+        contents: [
+          {
+            parts: parts
+          }
+        ]
+      };
 
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
-
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    const errMsg = errData?.error?.message || `HTTP error ${res.status}`;
-    if (errMsg.includes('no longer available') || errMsg.includes('not found') || errMsg.includes('is not supported')) {
-      if (state.model !== 'gemini-3.8-flash') {
-        state.model = 'gemini-3.8-flash';
-        localStorage.setItem(STORAGE_KEYS.MODEL, 'gemini-3.8-flash');
-        return callGemini(promptText, systemInstruction, inlineDataParts);
+      if (systemInstruction) {
+        payload.systemInstruction = {
+          parts: [{ text: systemInstruction }]
+        };
       }
+
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const textOutput = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (textOutput) {
+          if (state.model !== model) {
+            state.model = model;
+            localStorage.setItem(STORAGE_KEYS.MODEL, model);
+            if (els.selectModel) els.selectModel.value = model;
+          }
+          return textOutput;
+        }
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        const errMsg = errData?.error?.message || `HTTP error ${res.status}`;
+        lastError = new Error(errMsg);
+        console.warn(`[callGemini] Model ${model} returned: ${errMsg}. Mencoba model fallback...`);
+      }
+    } catch (netErr) {
+      lastError = netErr;
+      console.warn(`[callGemini] Model ${model} fetch exception: ${netErr.message}. Mencoba model fallback...`);
     }
-    throw new Error(errMsg);
   }
 
-  const data = await res.json();
-  const textOutput = data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-  return textOutput;
+  throw lastError || new Error('Gagal menghubungi Gemini API setelah mencoba semua model yang tersedia.');
 }
 
 // Handler: Generate Source Pack (Phase 1)
@@ -1999,12 +2018,12 @@ function handlePaste(e) {
   }
 
   // 5. Teks biasa di luar textarea input (hanya jika sedang di Tab 1 / Universal Reference Hub)
-  if (state.activeTab === 'tab-input' && document.activeElement !== els.inputReference && plainText && plainText.length > 0) {
+  if (state.activeTab === 'tab-source' && document.activeElement !== els.inputReference && document.activeElement !== els.inputReferenceFocus && plainText && plainText.length > 0) {
     e.preventDefault();
     els.inputReference.value = (els.inputReference.value ? els.inputReference.value + '\n\n' : '') + plainText;
     state.project.sourceInput = els.inputReference.value;
     saveCurrentProject();
-    showToast('📋 Teks dari Clipboard berhasil ditambahkan!');
+    showToast('📋 Teks dari Clipboard berhasil ditambahkan ke Section 1!');
   }
 }
 
@@ -2603,9 +2622,10 @@ async function callImageGeneration(promptText, aspectRatio = '9:16', referenceIm
     }
 
     const candidateModels = [
-      'gemini-3.1-flash-image',
       'gemini-2.5-flash-image',
-      'gemini-3-pro-image'
+      'imagen-3.0-generate-002',
+      'gemini-2.0-flash',
+      'gemini-3.1-flash-image'
     ];
 
     for (const model of candidateModels) {
@@ -3087,6 +3107,10 @@ async function syncAssetPromptFromNarrative() {
     els.btnSyncAssetPrompt.disabled = true;
     els.btnSyncAssetPrompt.innerHTML = `<span class="animate-spin inline-block mr-1">⏳</span> Menyinkronkan...`;
   }
+  if (els.btnHeaderSyncAsset) {
+    els.btnHeaderSyncAsset.disabled = true;
+    els.btnHeaderSyncAsset.innerHTML = `<span class="animate-spin inline-block mr-1">⏳</span> Proses...`;
+  }
 
   try {
     let aiPrompt = null;
@@ -3099,7 +3123,7 @@ async function syncAssetPromptFromNarrative() {
           ? 'Object & product turntable 360 reference sheet' 
           : 'World environment & architectural concept sheet');
       
-      const sysPrompt = `You are a world-class prompt engineer for Google Gemini Banana Pro (gemini-3.1-flash-image) specialized in 9:16 vertical short video character & asset design.
+      const sysPrompt = `You are a world-class prompt engineer for Google Gemini Banana Pro (gemini-2.5-flash-image) specialized in 9:16 vertical short video character & asset design.
 Write a single comprehensive, production-grade image prompt for a "${typeLabel}".
 The prompt MUST faithfully describe the exact subject, character appearance, wardrobe, facial details, materials, environment context, lighting, and palette from the provided story narrative.
 Include neutral studio backdrop, 8k photorealism, and finish with "--ar 9:16".
@@ -3130,6 +3154,10 @@ Generate the official Master Asset Sheet prompt in English for Gemini Banana Pro
       state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack, currentType);
     }
     state.project.assetSheet.prompt = aiPrompt;
+    state.project.lastSyncedNarrative = rawInput;
+    if (els.inputAssetPrompt) {
+      els.inputAssetPrompt.value = aiPrompt;
+    }
     saveCurrentProject();
     renderAssetSheetUI();
     showToast('✨ Prompt Asset Sheet berhasil disinkronkan dengan ide cerita Anda!');
@@ -3141,6 +3169,10 @@ Generate the official Master Asset Sheet prompt in English for Gemini Banana Pro
     } else {
       state.project.assetSheet.prompt = fallback.prompt;
     }
+    state.project.lastSyncedNarrative = rawInput;
+    if (els.inputAssetPrompt) {
+      els.inputAssetPrompt.value = fallback.prompt;
+    }
     saveCurrentProject();
     renderAssetSheetUI();
     showToast('Prompt disinkronkan dari ide cerita (Engine Bawaan).');
@@ -3148,19 +3180,28 @@ Generate the official Master Asset Sheet prompt in English for Gemini Banana Pro
     if (els.btnSyncAssetPrompt) {
       els.btnSyncAssetPrompt.disabled = false;
       els.btnSyncAssetPrompt.innerHTML = `<i data-lucide="sparkles" class="w-3.5 h-3.5 text-purple-300"></i><span>Sinkronkan dari Narasi</span>`;
-      lucide.createIcons();
     }
+    if (els.btnHeaderSyncAsset) {
+      els.btnHeaderSyncAsset.disabled = false;
+      els.btnHeaderSyncAsset.innerHTML = `<i data-lucide="sparkles" class="w-3.5 h-3.5 text-purple-300"></i><span>Perbarui Prompt dari Narasi Ini</span>`;
+    }
+    lucide.createIcons();
   }
 }
 
 function resetAssetPrompt() {
   const currentType = state.project.assetSheet?.type || (state.project.continuityLevel === 'B' ? 'character' : (state.project.continuityLevel === 'C' ? 'object' : 'world'));
+  const rawInput = state.project.sourceInput?.trim() || els.inputReference?.value?.trim() || '';
   const generated = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack, currentType);
   if (!state.project.assetSheet) {
     state.project.assetSheet = generated;
   } else {
     state.project.assetSheet.prompt = generated.prompt;
     state.project.assetSheet.title = generated.title;
+  }
+  state.project.lastSyncedNarrative = rawInput;
+  if (els.inputAssetPrompt) {
+    els.inputAssetPrompt.value = generated.prompt;
   }
   saveCurrentProject();
   renderAssetSheetUI();
@@ -3436,12 +3477,24 @@ function generateDefaultAssetSheet(masterPack, continuityLevel, sourcePack, forc
   // 1. Raw story narrative from Section 1
   const rawInput = state.project.sourceInput?.trim() || els.inputReference?.value?.trim() || '';
 
-  // 2. Intelligent subject extraction
+  // 2. Intelligent subject extraction: Prioritize user's fresh story narrative directly!
   let subject = '';
   let location = '';
 
-  // Check structured sourcePack
-  if (sourcePack) {
+  if (rawInput) {
+    // Clean rawInput (remove video reference prefix or URLs if any)
+    const cleanLines = rawInput.split('\n')
+      .map(l => l.trim())
+      .filter(l => l && !l.startsWith('http') && !l.toLowerCase().startsWith('video referensi:') && !l.toLowerCase().startsWith('link:'));
+    const firstCleanLine = cleanLines[0] || rawInput;
+    // Extract first sentence or up to 140 characters
+    const firstSentence = firstCleanLine.split(/[.!?]/)[0]?.trim() || firstCleanLine;
+    subject = firstSentence.slice(0, 140);
+    location = `cinematic environment based on "${subject.slice(0, 60)}"`;
+  }
+
+  // Fallback to structured sourcePack only if rawInput had no subject
+  if (!subject && sourcePack) {
     const char = sourcePack.storyElements?.character;
     const obj = sourcePack.storyElements?.object;
     const loc = sourcePack.storyElements?.location;
@@ -3457,28 +3510,12 @@ function generateDefaultAssetSheet(masterPack, continuityLevel, sourcePack, forc
     }
   }
 
-  // If subject is still empty or generic, extract directly from rawInput
-  if (!subject && rawInput) {
-    // Clean rawInput (remove video reference prefix or URLs if any)
-    const cleanLines = rawInput.split('\n')
-      .map(l => l.trim())
-      .filter(l => l && !l.startsWith('http') && !l.toLowerCase().startsWith('video referensi:'));
-    const firstCleanLine = cleanLines[0] || rawInput;
-    // Extract first sentence or up to 120 characters
-    const firstSentence = firstCleanLine.split(/[.!?]/)[0]?.trim() || firstCleanLine;
-    subject = firstSentence.slice(0, 120);
-  }
-
   if (!subject) {
-    subject = masterPack?.title || 'Protagonist character';
+    subject = masterPack?.title || 'Protagonist hero character';
   }
 
   if (!location) {
-    if (rawInput) {
-      location = `cinematic atmospheric environment based on "${subject.slice(0, 50)}"`;
-    } else {
-      location = 'cinematic atmospheric environment';
-    }
+    location = 'atmospheric cinematic environment';
   }
 
   const title = masterPack?.title || (rawInput ? subject.slice(0, 40) : 'Daily Short Video');
@@ -3523,24 +3560,31 @@ function generateDefaultAssetSheet(masterPack, continuityLevel, sourcePack, forc
 
 function generateSmartSourcePack(input, theme) {
   const cleanTheme = theme === 'bebas' ? 'Cinematic Atmospheric' : theme;
+  const rawInput = input?.trim() || '';
+  const cleanLines = rawInput.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !l.startsWith('http') && !l.toLowerCase().startsWith('video referensi:'));
+  const firstSentence = (cleanLines[0] || rawInput).split(/[.!?]/)[0]?.trim() || rawInput;
+  const subjectName = firstSentence ? firstSentence.slice(0, 100) : 'Sinematik Eksplorasi';
+
   return {
-    subject: `Eksplorasi visual terfokus: ${input.slice(0, 80)}...`,
-    coreIdea: `Interpretasi mendalam tentang ${input.slice(0, 100)} dalam gaya ${cleanTheme}.`,
+    subject: subjectName,
+    coreIdea: `Interpretasi visual tentang ${subjectName.slice(0, 80)} dalam gaya ${cleanTheme}.`,
     visualMoments: [
-      "Pembukaan dramatis dengan skala yang mengejutkan penonton",
+      `Pembukaan dramatis memperkenalkan ${subjectName.slice(0, 50)}`,
       "Transisi pencahayaan dramatis menembus tekstur material utama",
       "Detail macro yang memperlihatkan keunikan objek secara intim",
-      "Perubahan situasi atau pergerakan besar yang memicu tensi",
+      "Perubahan situasi atau pergerakan dinamis yang memicu tensi",
       "Payoff visual megah dengan komposisi simetris yang memukau"
     ],
     storyElements: {
-      character: "Sosok pengamat atau elemen sentral yang konsisten",
-      object: "Objek simbolik utama yang menjadi jangkar cerita",
-      location: "Lingkungan berkarakter kuat yang mendukung nuansa cerita",
-      action: "Aksi tunggal yang terencana dan elegan",
-      transformation: "Perubahan atmosfer dari misteri menuju kejernihan visual"
+      character: `${subjectName.slice(0, 70)} (Tokoh Sentral)`,
+      object: "Elemen simbolik hero objek yang menjadi jangkar cerita",
+      location: `Lingkungan atmosferik pendukung ${subjectName.slice(0, 50)}`,
+      action: "Aksi visual terencana dan dinamis",
+      transformation: "Perubahan atmosfer dari ketegangan menuju klimaks visual"
     },
-    facts: "Informasi dikurasi agar fokus pada kekuatan narasi visual daripada teks penjelasan panjang.",
+    facts: "Fokus pada kekuatan komposisi visual 9:16 daripada teks penjelasan panjang.",
     visualDNA: {
       camera: "35mm cinematic anamorphic, slow deliberate tracking, subtle micro-drift",
       lighting: "High-contrast cinematic key lighting, deep rich shadow separation",
@@ -3558,7 +3602,8 @@ function generateSmartSourcePack(input, theme) {
 }
 
 function generateSmartMasterAndScenes(sourcePack, theme, level) {
-  const title = `THE CHRONICLES OF ${sourcePack.subject.slice(0, 30).toUpperCase()}`;
+  const rawSubject = (sourcePack?.subject || 'Short Film').replace(/^eksplorasi visual terfokus:\s*/i, '').trim();
+  const title = rawSubject ? rawSubject.slice(0, 35).toUpperCase() : 'DAILY CINEMATIC SHORT';
   const masterPack = {
     title: title,
     concept: sourcePack.coreIdea,
@@ -3688,7 +3733,7 @@ function renderAll() {
 
 function updateContinuityLevelUI() {
   const level = state.project.continuityLevel || 'B';
-  els.btnLevels.forEach(b => {
+  els.btnLevels?.forEach(b => {
     if (b.dataset.level === level) {
       b.classList.add('bg-blue-600', 'text-white');
       b.classList.remove('text-slate-400');
@@ -3712,7 +3757,24 @@ function updateContinuityLevelUI() {
     }
   });
 
-  if (els.continuitySelectedDescription) {
+  if (els.continuityBadge && els.continuityTitle && els.continuitySelectedDescription) {
+    if (level === 'A') {
+      els.continuityBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40';
+      els.continuityBadge.textContent = 'Level A Aktif';
+      els.continuityTitle.textContent = 'Gaya Visual & Dunia (World & Style)';
+      els.continuitySelectedDescription.innerHTML = '<span class="text-blue-300 font-bold">🎬 Fokus Produksi:</span> <strong>Tanpa Karakter Tetap.</strong> AI akan merancang video berbasis estetika visual, atmosfer sinematik, pencahayaan, dan dunia lingkungan. Sangat ideal untuk dokumenter sains, keindahan alam, eksplorasi arsitektur, atau video meditasi/ambience.';
+    } else if (level === 'B') {
+      els.continuityBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+      els.continuityBadge.textContent = 'Level B Aktif ⭐';
+      els.continuityTitle.textContent = 'Karakter Utama Tetap (Rekomendasi Terbaik)';
+      els.continuitySelectedDescription.innerHTML = '<span class="text-emerald-300 font-bold">🎬 Fokus Produksi:</span> <strong>Kunci Identitas Tokoh Utama.</strong> AI akan mengunci struktur wajah, gaya rambut, pakaian, dan proporsi tokoh utama agar 100% konsisten di seluruh Scene 1 s/d 6. Di Fase 03, Anda akan membuat Master Character Model Sheet sebagai visual anchor.';
+    } else {
+      els.continuityBadge.className = 'text-xs font-bold px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40';
+      els.continuityBadge.textContent = 'Level C Aktif';
+      els.continuityTitle.textContent = 'Objek & Produk Komersial (Product & Object 360°)';
+      els.continuitySelectedDescription.innerHTML = '<span class="text-amber-300 font-bold">🎬 Fokus Produksi:</span> <strong>Kunci Presisi Objek / Produk Komersial.</strong> AI akan mengunci bentuk produk 360°, bahan material, logo, dan detail makro agar tidak berubah bentuk di seluruh Scene 1 s/d 6. Di Fase 03, Anda akan membuat Master Product Turntable Sheet.';
+    }
+  } else if (els.continuitySelectedDescription) {
     if (level === 'A') {
       els.continuitySelectedDescription.innerHTML = `Fokus Terpilih: <strong>Level A (Gaya Visual &amp; Dunia)</strong> — AI akan merancang Master Pack yang mengunci warna, lighting, dan atmosfer estetika tanpa tokoh tetap.`;
     } else if (level === 'B') {
@@ -3841,7 +3903,33 @@ function renderMasterPackUI() {
   els.masterPackContent.classList.remove('hidden');
   els.masterPackFooter.classList.remove('hidden');
 
+  const level = state.project.continuityLevel || 'B';
+  const levelLabel = level === 'A' ? 'Level A (World & Style)' : (level === 'B' ? 'Level B (Karakter Utama Tetap ⭐)' : 'Level C (Objek & Produk)');
+  const levelDesc = level === 'A' 
+    ? 'Fokus pada konsistensi dunia, pencahayaan, dan estetika tanpa tokoh tetap.' 
+    : (level === 'B' 
+      ? 'Identitas wajah, rambut, dan pakaian tokoh utama terkunci 100% konsisten di semua 6 scene.' 
+      : 'Bentuk produk 360°, logo, dan bahan material terkunci presisi di semua 6 scene.');
+
   els.masterPackContent.innerHTML = `
+    <!-- Continuity Lock Decision Banner -->
+    <div class="p-4 rounded-xl bg-gradient-to-r from-blue-950/50 via-dark-card to-dark-card border border-blue-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+      <div class="space-y-1">
+        <div class="flex items-center gap-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse"></span>
+          <span class="text-xs font-extrabold uppercase tracking-wider text-blue-300">Keputusan Kontinuitas Terkunci</span>
+          <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">${levelLabel}</span>
+        </div>
+        <p class="text-xs text-slate-200">
+          ${levelDesc}
+        </p>
+      </div>
+      <button type="button" class="btn-jump-to-asset shrink-0 px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-1.5 shadow transition">
+        <span>Buka Asset Sheet (Fase 03)</span>
+        <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+      </button>
+    </div>
+
     <!-- Header Summary -->
     <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-dark-border pb-4">
       <div>
@@ -3887,11 +3975,26 @@ function renderMasterPackUI() {
       </div>
     </div>
   `;
+
+  els.masterPackContent.querySelector('.btn-jump-to-asset')?.addEventListener('click', () => switchTab('tab-asset'));
+  lucide.createIcons();
 }
 
 function renderAssetSheetUI() {
   const as = state.project.assetSheet;
   const currentType = as?.type || (state.project.continuityLevel === 'B' ? 'character' : (state.project.continuityLevel === 'C' ? 'object' : 'world'));
+
+  // Update live narrative connection banner
+  if (els.assetNarrativeLinkBox && els.assetNarrativeSnippetText) {
+    const rawInput = state.project.sourceInput?.trim() || els.inputReference?.value?.trim() || '';
+    if (rawInput) {
+      els.assetNarrativeLinkBox.classList.remove('hidden');
+      const snippet = rawInput.length > 70 ? rawInput.slice(0, 70) + '...' : rawInput;
+      els.assetNarrativeSnippetText.textContent = `“${snippet}”`;
+    } else {
+      els.assetNarrativeSnippetText.textContent = '“Belum ada ide cerita di Section 1”';
+    }
+  }
 
   // Update pills active state
   els.btnAssetTypePills?.forEach(pill => {
@@ -3910,8 +4013,15 @@ function renderAssetSheetUI() {
   }
 
   // Inputs
-  if (els.inputAssetPrompt && as?.prompt) {
-    els.inputAssetPrompt.value = as.prompt;
+  if (els.inputAssetPrompt) {
+    if (as?.prompt) {
+      els.inputAssetPrompt.value = as.prompt;
+    } else {
+      const generated = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack, currentType);
+      if (!state.project.assetSheet) state.project.assetSheet = generated;
+      else state.project.assetSheet.prompt = generated.prompt;
+      els.inputAssetPrompt.value = generated.prompt;
+    }
   }
   if (els.inputAssetNegative && as?.negativePrompt) {
     els.inputAssetNegative.value = as.negativePrompt;

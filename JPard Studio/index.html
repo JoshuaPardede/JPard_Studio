@@ -433,16 +433,30 @@
 
             </div>
 
-            <!-- Explanation & Action Footer in Toolbar -->
-            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-dark-border/60">
-              <div class="flex items-center gap-2 text-xs text-slate-300">
-                <i data-lucide="info" class="w-4 h-4 text-blue-400 shrink-0"></i>
-                <span id="continuitySelectedDescription">Fokus Terpilih: <strong>Level B (Karakter Utama)</strong> — AI akan merancang Master Pack yang mengunci konsistensi tokoh di 6 scene.</span>
+            <!-- Detailed Decision Guide & Action Footer -->
+            <div id="continuityDecisionBox" class="p-4 rounded-xl bg-[#060810] border border-blue-500/30 space-y-3">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-dark-border/60 pb-2.5">
+                <div class="flex items-center gap-2">
+                  <span id="continuityBadge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    Level B Aktif ⭐
+                  </span>
+                  <span id="continuityTitle" class="text-xs font-extrabold text-white">
+                    Karakter Utama Tetap (Direkomendasikan)
+                  </span>
+                </div>
+                <span class="text-[11px] text-slate-400 font-mono">
+                  Aturan: Mengikat seluruh 6 Scene
+                </span>
               </div>
-              <button id="btnBuildProductionPack" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition shrink-0">
-                <i data-lucide="film" class="w-4 h-4"></i>
-                <span>GENERATE MASTER PRODUCTION PACK</span>
-              </button>
+              <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div id="continuitySelectedDescription" class="text-xs text-slate-300 leading-relaxed max-w-2xl">
+                  <span class="text-emerald-300 font-bold">🎬 Fokus Produksi:</span> <strong>Kunci Identitas Tokoh Utama.</strong> AI akan mengunci struktur wajah, gaya rambut, pakaian, dan proporsi tokoh utama agar 100% konsisten di seluruh Scene 1 s/d 6. Di Fase 03, Anda akan membuat Master Character Model Sheet sebagai visual anchor.
+                </div>
+                <button id="btnBuildProductionPack" class="w-full sm:w-auto px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 transition shrink-0">
+                  <i data-lucide="film" class="w-4 h-4"></i>
+                  <span>GENERATE MASTER PRODUCTION PACK</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -520,6 +534,20 @@
             <span>Gunakan Sebagai Anchor di 6-Scene</span>
           </label>
         </div>
+      </div>
+
+      <!-- Live Narrative Connection Banner (Section 1 -> Section 3 Link) -->
+      <div id="assetNarrativeLinkBox" class="p-3.5 rounded-xl bg-purple-950/30 border border-purple-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm">
+        <div class="flex items-center gap-2.5 text-purple-200">
+          <span class="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse shrink-0"></span>
+          <span class="leading-relaxed">
+            Ide Cerita Terhubung dari Section 1: <strong id="assetNarrativeSnippetText" class="text-white italic">&ldquo;Belum ada narasi&rdquo;</strong>
+          </span>
+        </div>
+        <button id="btnHeaderSyncAsset" type="button" class="text-[11px] font-bold text-purple-300 hover:text-white px-3 py-1.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 transition flex items-center gap-1.5 self-start sm:self-auto shrink-0 shadow-sm" title="Sinkronkan prompt sekarang mengikuti ide cerita di atas">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5 text-purple-300"></i>
+          <span>Perbarui Prompt dari Narasi Ini</span>
+        </button>
       </div>
 
       <!-- Main Workspace: 9:16 Canvas (Left) + Prompt & Generator (Right) -->
@@ -1127,9 +1155,10 @@
             Pilihan Model Gemini
           </label>
           <select id="selectModel" class="w-full bg-[#0a0c14] border border-dark-border focus:border-orange-500 rounded-xl p-2.5 text-slate-200 focus:outline-none transition">
-            <option value="gemini-3.8-flash">Gemini 3.8 Flash (Paling Cepat &amp; Terbaru)</option>
-            <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
-            <option value="gemini-3.7-flash">Gemini 3.7 Flash</option>
+            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Paling Cepat &amp; Rekomendasi Resmi Google)</option>
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro (Penalaran Kompleks &amp; Akurat)</option>
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+            <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
           </select>
         </div>
       </div>
