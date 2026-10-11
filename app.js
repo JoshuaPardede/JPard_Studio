@@ -172,6 +172,13 @@ const els = {
   assetNarrativeSnippetText: document.getElementById('assetNarrativeSnippetText'),
   btnHeaderSyncAsset: document.getElementById('btnHeaderSyncAsset'),
   inputAssetPrompt: document.getElementById('inputAssetPrompt'),
+  btnExpandAssetPrompt: document.getElementById('btnExpandAssetPrompt'),
+  modalAssetPromptFocus: document.getElementById('modalAssetPromptFocus'),
+  btnMinimizeAssetPromptFocus: document.getElementById('btnMinimizeAssetPromptFocus'),
+  inputAssetPromptFocus: document.getElementById('inputAssetPromptFocus'),
+  assetPromptFocusWordCountBadge: document.getElementById('assetPromptFocusWordCountBadge'),
+  btnSaveAndCloseAssetPromptFocus: document.getElementById('btnSaveAndCloseAssetPromptFocus'),
+  btnModalSyncAssetPrompt: document.getElementById('btnModalSyncAssetPrompt'),
   inputAssetNegative: document.getElementById('inputAssetNegative'),
   btnAddAssetPromptRef: document.getElementById('btnAddAssetPromptRef'),
   inputAssetPromptRefFile: document.getElementById('inputAssetPromptRefFile'),
@@ -252,6 +259,19 @@ function initProject() {
       // Clean up residual auto-generated boilerplate if previously saved
       if (state.project.sourceInput && state.project.sourceInput.startsWith('Video Referensi: "')) {
         state.project.sourceInput = '';
+      }
+      // Self-healing migration for generic placeholder sourcePack or uncleaned markdown in asset sheet
+      if (state.project.sourcePack) {
+        const char = state.project.sourcePack.storyElements?.character || '';
+        const subj = state.project.sourcePack.subject || '';
+        if (char.includes('Sosok pengamat') || subj.startsWith('Eksplorasi visual terfokus: #') || subj.includes('# DAY IN MY LIFE')) {
+          if (state.project.sourceInput) {
+            state.project.sourcePack = generateSmartSourcePack(state.project.sourceInput, state.project.theme);
+          }
+        }
+      }
+      if (state.project.assetSheet?.prompt && (state.project.assetSheet.prompt.includes('# DAY IN MY LIFE') || state.project.assetSheet.prompt.includes('Sosok pengamat'))) {
+        state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
       }
     } catch (e) {
       resetProject();
@@ -443,9 +463,81 @@ function setupEventListeners() {
     }
   });
 
+  // Section 3: Master Asset Prompt Focus Modal Handlers
+  const updateAssetPromptFocusWordCount = () => {
+    const val = els.inputAssetPromptFocus?.value || '';
+    const words = val.trim() ? val.trim().split(/\s+/).length : 0;
+    const chars = val.length;
+    if (els.assetPromptFocusWordCountBadge) {
+      els.assetPromptFocusWordCountBadge.textContent = `${words} Kata • ${chars} Karakter`;
+    }
+  };
+
+  const openAssetPromptFocusModal = () => {
+    if (!els.modalAssetPromptFocus) return;
+    if (els.inputAssetPromptFocus && els.inputAssetPrompt) {
+      els.inputAssetPromptFocus.value = els.inputAssetPrompt.value || '';
+      updateAssetPromptFocusWordCount();
+    }
+    els.modalAssetPromptFocus.classList.add('active');
+    setTimeout(() => {
+      els.inputAssetPromptFocus?.focus();
+    }, 120);
+  };
+
+  const closeAssetPromptFocusModal = () => {
+    if (!els.modalAssetPromptFocus) return;
+    if (els.inputAssetPromptFocus && els.inputAssetPrompt) {
+      els.inputAssetPrompt.value = els.inputAssetPromptFocus.value;
+      if (!state.project.assetSheet) {
+        state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+      }
+      state.project.assetSheet.prompt = els.inputAssetPrompt.value;
+      saveCurrentProject();
+      els.inputAssetPrompt.scrollTop = 0;
+    }
+    els.modalAssetPromptFocus.classList.remove('active');
+    els.inputAssetPrompt?.focus();
+  };
+
+  els.btnExpandAssetPrompt?.addEventListener('click', openAssetPromptFocusModal);
+  els.btnMinimizeAssetPromptFocus?.addEventListener('click', closeAssetPromptFocusModal);
+  els.btnSaveAndCloseAssetPromptFocus?.addEventListener('click', closeAssetPromptFocusModal);
+
+  els.modalAssetPromptFocus?.addEventListener('click', (e) => {
+    if (e.target === els.modalAssetPromptFocus) {
+      closeAssetPromptFocusModal();
+    }
+  });
+
+  els.inputAssetPromptFocus?.addEventListener('input', () => {
+    if (els.inputAssetPrompt) {
+      els.inputAssetPrompt.value = els.inputAssetPromptFocus.value;
+      if (!state.project.assetSheet) {
+        state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+      }
+      state.project.assetSheet.prompt = els.inputAssetPrompt.value;
+      saveCurrentProject();
+    }
+    updateAssetPromptFocusWordCount();
+  });
+
+  els.btnModalSyncAssetPrompt?.addEventListener('click', async () => {
+    await syncAssetPromptFromNarrative();
+    if (els.inputAssetPromptFocus && els.inputAssetPrompt) {
+      els.inputAssetPromptFocus.value = els.inputAssetPrompt.value;
+      updateAssetPromptFocusWordCount();
+    }
+  });
+
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && els.modalReferenceFocus && els.modalReferenceFocus.classList.contains('active')) {
-      closeReferenceFocusModal();
+    if (e.key === 'Escape') {
+      if (els.modalReferenceFocus && els.modalReferenceFocus.classList.contains('active')) {
+        closeReferenceFocusModal();
+      }
+      if (els.modalAssetPromptFocus && els.modalAssetPromptFocus.classList.contains('active')) {
+        closeAssetPromptFocusModal();
+      }
     }
   });
 
@@ -661,8 +753,9 @@ function switchTab(tabId) {
   if (tabId === 'tab-asset') {
     const rawInput = state.project.sourceInput?.trim() || els.inputReference?.value?.trim() || '';
     const currentPrompt = state.project.assetSheet?.prompt || '';
-    const isGeneric = !currentPrompt || currentPrompt.includes('Main subject') || currentPrompt.includes('Daily Short') || currentPrompt.includes('Sosok pengamat');
-    const narrativeChanged = rawInput && state.project.lastSyncedNarrative && rawInput !== state.project.lastSyncedNarrative;
+    const isGeneric = !currentPrompt || currentPrompt.includes('Main subject') || currentPrompt.includes('Daily Short') || currentPrompt.includes('Sosok pengamat') || currentPrompt.includes('# DAY IN MY LIFE');
+    const lastSync = (state.project.lastSyncedNarrative || '').trim();
+    const narrativeChanged = Boolean(rawInput && rawInput !== lastSync);
 
     if (rawInput && (!state.project.assetSheet || !currentPrompt || isGeneric || narrativeChanged)) {
       state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
@@ -670,6 +763,9 @@ function switchTab(tabId) {
       saveCurrentProject();
     }
     renderAssetSheetUI();
+    if (els.inputAssetPrompt) {
+      els.inputAssetPrompt.scrollTop = 0;
+    }
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1443,6 +1539,7 @@ Extract the SOURCE PACK. Output ONLY a valid JSON object matching this exact str
 
     state.project.sourcePack = sourcePackData;
     state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, sourcePackData);
+    state.project.lastSyncedNarrative = input;
     saveCurrentProject();
     renderSourcePackUI();
     renderAssetSheetUI();
@@ -1452,6 +1549,7 @@ Extract the SOURCE PACK. Output ONLY a valid JSON object matching this exact str
     showToast(`Error: ${err.message}. Menggunakan generator pintar bawaan.`);
     state.project.sourcePack = generateSmartSourcePack(input, theme);
     state.project.assetSheet = generateDefaultAssetSheet(state.project.masterPack, state.project.continuityLevel, state.project.sourcePack);
+    state.project.lastSyncedNarrative = input;
     saveCurrentProject();
     renderSourcePackUI();
     renderAssetSheetUI();
@@ -2407,167 +2505,253 @@ function toggleAssetSelectionForScenes(assetId) {
   renderScenesUI();
 }
 
+function cleanMarkdownFormatting(text) {
+  if (!text) return '';
+  return text
+    .replace(/^#+\s+/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/_([^_]+)_/g, '$1')
+    .replace(/~~([^~]+)~~/g, '$1')
+    .replace(/`+([^`]+)`+/g, '$1')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*>\s+/gm, '')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .trim();
+}
+
 function generateProceduralAssetCanvas(promptText, aspectRatio = '9:16') {
   const canvas = document.createElement('canvas');
   canvas.width = 720;
   canvas.height = 1280;
   const ctx = canvas.getContext('2d');
 
-  // Background gradient: Deep cinematic obsidian with purple/amber ambient lighting
+  // Background: Deep obsidian film studio darkroom
   const bgGrad = ctx.createLinearGradient(0, 0, 720, 1280);
-  bgGrad.addColorStop(0, '#0a0d18');
-  bgGrad.addColorStop(0.5, '#05070d');
-  bgGrad.addColorStop(1, '#0e0b16');
+  bgGrad.addColorStop(0, '#090b14');
+  bgGrad.addColorStop(0.4, '#06070c');
+  bgGrad.addColorStop(0.8, '#0b0914');
+  bgGrad.addColorStop(1, '#05060a');
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, 720, 1280);
 
-  // Subtle grid overlay
-  ctx.strokeStyle = 'rgba(147, 51, 234, 0.08)';
+  // Studio lighting cone: Subtle volumetric top-down spotlight
+  const spotGrad = ctx.createRadialGradient(360, 200, 40, 360, 520, 450);
+  spotGrad.addColorStop(0, 'rgba(168, 85, 247, 0.16)');
+  spotGrad.addColorStop(0.5, 'rgba(245, 158, 11, 0.06)');
+  spotGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = spotGrad;
+  ctx.fillRect(0, 0, 720, 900);
+
+  // Technical framing guides & golden ratio grid
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
   ctx.lineWidth = 1;
-  for (let x = 40; x < 720; x += 40) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, 1280);
-    ctx.stroke();
-  }
-  for (let y = 40; y < 1280; y += 40) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(720, y);
-    ctx.stroke();
-  }
+  ctx.strokeRect(40, 40, 640, 1200);
 
-  // Futuristic border frame
-  ctx.strokeStyle = 'rgba(168, 85, 247, 0.4)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(30, 30, 660, 1220);
-
-  // Corner accents
-  const corners = [
-    [30, 30, 1, 1],
-    [690, 30, -1, 1],
-    [30, 1250, 1, -1],
-    [690, 1250, -1, -1]
-  ];
-  ctx.strokeStyle = '#a855f7';
-  ctx.lineWidth = 4;
-  for (const [cx, cy, dx, dy] of corners) {
+  const drawCross = (cx, cy, sz = 12) => {
+    ctx.strokeStyle = 'rgba(168, 85, 247, 0.25)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(cx, cy + dy * 30);
-    ctx.lineTo(cx, cy);
-    ctx.lineTo(cx + dx * 30, cy);
+    ctx.moveTo(cx - sz, cy); ctx.lineTo(cx + sz, cy);
+    ctx.moveTo(cx, cy - sz); ctx.lineTo(cx, cy + sz);
     ctx.stroke();
-  }
+  };
+  drawCross(40, 40);
+  drawCross(680, 40);
+  drawCross(40, 1240);
+  drawCross(680, 1240);
+  drawCross(360, 500, 16);
 
-  // Header Title
+  // Studio Header Bar
+  ctx.fillStyle = '#f59e0b';
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('JPARD STUDIO • BANANA PRO MASTER ANCHOR', 55, 75);
+
   ctx.fillStyle = '#a855f7';
-  ctx.font = 'bold 22px monospace';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('RATIO 9:16 • 8K RESOLUTION', 665, 75);
+
+  // Extract clean subject title from project or prompt
+  const rawSubject = (state.project.sourcePack?.subject || '').replace(/^#+\s*/, '') ||
+                     (state.project.sourceInput ? cleanMarkdownFormatting(state.project.sourceInput).slice(0, 45) : 'MASTER CHARACTER TURNAROUND');
+  const displayTitle = cleanMarkdownFormatting(rawSubject).toUpperCase().slice(0, 45);
+
+  // Prominent Subject Title
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 22px sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('JPARD STUDIO • PRODUCTION ASSET SHEET', 360, 80);
+  ctx.fillText(displayTitle, 360, 120);
 
   ctx.fillStyle = '#94a3b8';
-  ctx.font = '14px monospace';
-  ctx.fillText('9:16 VERTICAL MULTIMODAL VISUAL ANCHOR', 360, 110);
+  ctx.font = '11px monospace';
+  ctx.fillText('MULTI-ANGLE CONTINUITY SPECIFICATION SHEET', 360, 142);
 
-  // Center Silhouette / Card Frame
-  const cardGrad = ctx.createLinearGradient(120, 160, 600, 880);
-  cardGrad.addColorStop(0, 'rgba(139, 92, 246, 0.15)');
-  cardGrad.addColorStop(1, 'rgba(30, 27, 75, 0.4)');
-  ctx.fillStyle = cardGrad;
-  ctx.beginPath();
-  if (ctx.roundRect) {
-    ctx.roundRect(100, 160, 520, 720, 24);
-  } else {
-    ctx.rect(100, 160, 520, 720);
-  }
+  // Center Stage Card
+  const stageGrad = ctx.createLinearGradient(100, 165, 620, 870);
+  stageGrad.addColorStop(0, 'rgba(15, 18, 30, 0.85)');
+  stageGrad.addColorStop(1, 'rgba(10, 12, 22, 0.95)');
+  ctx.fillStyle = stageGrad;
+  if (ctx.roundRect) ctx.roundRect(80, 165, 560, 715, 20);
+  else ctx.rect(80, 165, 560, 715);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(168, 85, 247, 0.5)';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(168, 85, 247, 0.35)';
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Glow in center
-  const glow = ctx.createRadialGradient(360, 480, 20, 360, 480, 240);
-  glow.addColorStop(0, 'rgba(168, 85, 247, 0.4)');
-  glow.addColorStop(0.7, 'rgba(99, 102, 241, 0.1)');
-  glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(360, 480, 240, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Draw 3 Turnaround Wireframe Guides (Front, 3/4, Profile)
-  const drawGuide = (x, y, label) => {
-    // Silhouette Head
-    ctx.fillStyle = 'rgba(216, 180, 254, 0.85)';
+  // Draw 3 Realistic Stylized Turnaround Figures (Front, 3/4, Profile)
+  const drawTurnaroundHero = (x, y, label, angle) => {
+    // Height marker line behind figure
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
+    ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.arc(x, y - 60, 32, 0, Math.PI * 2);
+    ctx.moveTo(x - 50, y - 160);
+    ctx.lineTo(x + 50, y - 160);
+    ctx.moveTo(x - 50, y + 170);
+    ctx.lineTo(x + 50, y + 170);
+    ctx.stroke();
+
+    // Ambient shadow on platform
+    const platGrad = ctx.createRadialGradient(x, y + 170, 5, x, y + 170, 60);
+    platGrad.addColorStop(0, 'rgba(0, 0, 0, 0.8)');
+    platGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = platGrad;
+    ctx.beginPath();
+    ctx.ellipse(x, y + 170, 60, 14, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Body
+    // Figure silhouette: realistic human proportions
+    ctx.save();
+    // Head with styled hair contour
+    ctx.fillStyle = '#1e2438';
     ctx.beginPath();
-    ctx.ellipse(x, y + 40, 48, 80, 0, 0, Math.PI * 2);
+    ctx.arc(x, y - 110, 28, 0, Math.PI * 2);
     ctx.fill();
 
-    // Base badge
-    ctx.fillStyle = 'rgba(10, 10, 20, 0.8)';
+    // Neck
+    ctx.fillRect(x - 9, y - 84, 18, 22);
+
+    // Torso / Suit Jacket
     ctx.beginPath();
-    if (ctx.roundRect) {
-      ctx.roundRect(x - 55, y + 140, 110, 26, 6);
-    } else {
-      ctx.rect(x - 55, y + 140, 110, 26);
-    }
+    ctx.moveTo(x - 38, y - 62);
+    ctx.lineTo(x + 38, y - 62);
+    ctx.lineTo(x + 30, y + 55);
+    ctx.lineTo(x - 30, y + 55);
+    ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = 'rgba(168, 85, 247, 0.6)';
+
+    // Legs / Trousers
+    ctx.fillRect(x - 26, y + 55, 22, 110);
+    ctx.fillRect(x + 4, y + 55, 22, 110);
+
+    // Dual-Tone Rim Lighting on Figure Contours (Golden Key + Violet Rim)
+    // Amber Key Light (Right edge)
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(x, y - 110, 28, -Math.PI / 4, Math.PI / 4);
+    ctx.moveTo(x + 38, y - 62);
+    ctx.lineTo(x + 30, y + 55);
+    ctx.lineTo(x + 26, y + 165);
+    ctx.stroke();
+
+    // Violet Rim Light (Left edge)
+    ctx.strokeStyle = '#c084fc';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y - 110, 28, Math.PI * 0.75, Math.PI * 1.25);
+    ctx.moveTo(x - 38, y - 62);
+    ctx.lineTo(x - 30, y + 55);
+    ctx.lineTo(x - 26, y + 165);
+    ctx.stroke();
+
+    // Collar / Lapel V-shape
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x - 14, y - 62);
+    ctx.lineTo(x, y - 20);
+    ctx.lineTo(x + 14, y - 62);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Angle Badge Tag
+    ctx.fillStyle = '#0a0d18';
+    if (ctx.roundRect) ctx.roundRect(x - 52, y + 205, 104, 28, 6);
+    else ctx.rect(x - 52, y + 205, 104, 28);
+    ctx.fill();
+    ctx.strokeStyle = '#a855f7';
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    ctx.fillStyle = '#f1f5f9';
-    ctx.font = 'bold 12px monospace';
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = 'bold 11px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(label, x, y + 157);
+    ctx.fillText(label, x, y + 223);
   };
 
-  drawGuide(220, 500, 'FRONT 0°');
-  drawGuide(360, 470, '3/4 HERO 45°');
-  drawGuide(500, 500, 'PROFILE 90°');
+  drawTurnaroundHero(210, 480, 'FRONT 0°', 'front');
+  drawTurnaroundHero(360, 450, 'HERO 3/4 45°', 'hero');
+  drawTurnaroundHero(510, 480, 'PROFILE 90°', 'profile');
 
-  // Metadata Footer Section
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
-  ctx.beginPath();
-  if (ctx.roundRect) {
-    ctx.roundRect(60, 920, 600, 290, 16);
-  } else {
-    ctx.rect(60, 920, 600, 290);
-  }
+  // Palette Swatches Bar
+  const swatches = [
+    { color: '#0d1117', label: 'Obsidian' },
+    { color: '#1e293b', label: 'Slate Navy' },
+    { color: '#f59e0b', label: 'Warm Amber' },
+    { color: '#a855f7', label: 'Violet Rim' }
+  ];
+  swatches.forEach((sw, idx) => {
+    const swX = 135 + idx * 120;
+    ctx.fillStyle = sw.color;
+    if (ctx.roundRect) ctx.roundRect(swX, 810, 24, 24, 6);
+    else ctx.rect(swX, 810, 24, 24);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText(sw.label, swX + 30, 825);
+  });
+
+  // Footer Director Specifications Card
+  ctx.fillStyle = '#080a12';
+  if (ctx.roundRect) ctx.roundRect(60, 900, 600, 315, 18);
+  else ctx.rect(60, 900, 600, 315);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(168, 85, 247, 0.3)';
+  ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // Footer Tags
-  ctx.textAlign = 'left';
   ctx.fillStyle = '#c084fc';
-  ctx.font = 'bold 16px sans-serif';
-  ctx.fillText('DIRECTOR SPECIFICATION', 85, 960);
+  ctx.font = 'bold 13px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('DIRECTOR & PROMPT SPECIFICATIONS (BANANA PRO 9:16)', 85, 935);
 
   ctx.fillStyle = '#64748b';
-  ctx.font = '12px monospace';
-  ctx.fillText('TIMESTAMP: ' + new Date().toISOString(), 85, 985);
+  ctx.font = '10px monospace';
+  ctx.fillText('MODEL: GEMINI-2.5-FLASH-IMAGE / IMAGEN 3 • MASTER SPEC SHEET', 85, 955);
 
-  // Wrap prompt text
+  // Clean and wrap prompt
   ctx.fillStyle = '#e2e8f0';
-  ctx.font = '14px sans-serif';
-  const cleanP = (promptText || 'Master Asset Sheet Reference').substring(0, 280);
+  ctx.font = '12px sans-serif';
+  const cleanP = cleanMarkdownFormatting(promptText || 'Master Asset Sheet').substring(0, 350);
   const words = cleanP.split(' ');
   let line = '';
-  let yPos = 1020;
+  let yPos = 985;
   for (let n = 0; n < words.length; n++) {
     const testLine = line + words[n] + ' ';
     const metrics = ctx.measureText(testLine);
-    if (metrics.width > 550 && n > 0) {
+    if (metrics.width > 540 && n > 0) {
       ctx.fillText(line, 85, yPos);
       line = words[n] + ' ';
-      yPos += 24;
+      yPos += 22;
       if (yPos > 1180) break;
     } else {
       line = testLine;
@@ -2575,12 +2759,12 @@ function generateProceduralAssetCanvas(promptText, aspectRatio = '9:16') {
   }
   if (yPos <= 1180) ctx.fillText(line, 85, yPos);
 
-  return canvas.toDataURL('image/jpeg', 0.85);
+  return canvas.toDataURL('image/jpeg', 0.88);
 }
 
 async function callImageGeneration(promptText, aspectRatio = '9:16', referenceImages = null) {
   // Sanitize prompt text for text-to-image
-  const cleanPrompt = (promptText || 'Cinematic vertical shot')
+  const cleanPrompt = cleanMarkdownFormatting(promptText || 'Cinematic vertical shot')
     .replace(/--ar\s+9:16/gi, '')
     .replace(/--no\s+[^,]+/gi, '')
     .trim();
@@ -2598,11 +2782,48 @@ async function callImageGeneration(promptText, aspectRatio = '9:16', referenceIm
 
   // 1. Primary Strategy: Google Gemini Official Image Generation (if user provided API Key)
   if (apiKey && apiKey.length >= 10) {
+    // Strategy 1A: Google Imagen 3 (:predict)
+    try {
+      const imagenEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${encodeURIComponent(apiKey)}`;
+      const imagenPayload = {
+        instances: [{ prompt: cleanPrompt }],
+        parameters: {
+          sampleCount: 1,
+          aspectRatio: aspectRatio === '9:16' ? '9:16' : '1:1',
+          outputMimeType: 'image/jpeg'
+        }
+      };
+
+      const res = await fetch(imagenEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey
+        },
+        body: JSON.stringify(imagenPayload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const b64 = data?.predictions?.[0]?.bytesBase64Encoded;
+        const mime = data?.predictions?.[0]?.mimeType || 'image/jpeg';
+        if (b64) {
+          return `data:${mime};base64,${b64}`;
+        }
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        console.warn('[ImageGen] Imagen 3 predict response:', res.status, errJson);
+      }
+    } catch (err) {
+      console.warn('[ImageGen] Imagen 3 predict exception:', err);
+    }
+
+    // Strategy 1B: Google Gemini 2.5 Flash Image & 3.1 Flash Image (:generateContent)
+    const geminiModels = ['gemini-2.5-flash-image', 'gemini-3.1-flash-image'];
     const parts = [];
+
     if (refList.length > 0) {
-      const textPrompt = refList.length === 1 
-        ? `Generate a vertical 9:16 high-quality image adhering strictly to this prompt: ${cleanPrompt}. Maintain exact character identity, visual consistency, outfit, object design, lighting, and materials matching the attached reference image.`
-        : `Generate a vertical 9:16 high-quality image adhering strictly to this prompt: ${cleanPrompt}. Maintain exact character appearance, object identity, colors, textures, and lighting consistency matching all ${refList.length} attached visual reference assets.`;
+      const textPrompt = `Generate a vertical 9:16 high-quality image adhering strictly to this prompt: ${cleanPrompt}. Maintain exact character identity, visual consistency, outfit, object design, lighting, and materials matching all ${refList.length} attached visual reference assets.`;
       parts.push({ text: textPrompt });
 
       for (const ref of refList) {
@@ -2621,106 +2842,74 @@ async function callImageGeneration(promptText, aspectRatio = '9:16', referenceIm
       });
     }
 
-    const candidateModels = [
-      'gemini-2.5-flash-image',
-      'imagen-3.0-generate-002',
-      'gemini-2.0-flash',
-      'gemini-3.1-flash-image'
-    ];
+    for (const model of geminiModels) {
+      try {
+        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+        const payload = {
+          contents: [{ parts: parts }],
+          generationConfig: {
+            responseModalities: ["TEXT", "IMAGE"]
+          }
+        };
 
-    for (const model of candidateModels) {
-      for (const apiVer of ['v1', 'v1beta']) {
-        try {
-          const endpoint = `https://generativelanguage.googleapis.com/${apiVer}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-          const payload = {
-            contents: [{ parts: parts }]
-          };
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey
+          },
+          body: JSON.stringify(payload)
+        });
 
-          const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-goog-api-key': apiKey
-            },
-            body: JSON.stringify(payload)
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            if (data?.candidates?.[0]?.content?.parts) {
-              for (const part of data.candidates[0].content.parts) {
-                if (part.inlineData?.data) {
-                  const mime = part.inlineData.mimeType || 'image/jpeg';
-                  return `data:${mime};base64,${part.inlineData.data}`;
-                }
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.candidates?.[0]?.content?.parts) {
+            for (const part of data.candidates[0].content.parts) {
+              if (part.inlineData?.data) {
+                const mime = part.inlineData.mimeType || 'image/jpeg';
+                return `data:${mime};base64,${part.inlineData.data}`;
               }
             }
-          } else {
-            const errJson = await res.json().catch(() => ({}));
-            console.warn(`[ImageGen] Gemini ${model} (${apiVer}) returned:`, errJson?.error?.message || res.status);
           }
-        } catch (fetchErr) {
-          console.warn(`[ImageGen] Gemini ${model} (${apiVer}) exception:`, fetchErr);
+        } else {
+          const errJson = await res.json().catch(() => ({}));
+          console.warn(`[ImageGen] ${model} response:`, res.status, errJson);
         }
+      } catch (err) {
+        console.warn(`[ImageGen] ${model} exception:`, err);
       }
     }
 
-    // Try Interactions endpoint
+    // Strategy 1C: OpenAI Compatibility Endpoint
     try {
-      const interactionsEndpoint = `https://generativelanguage.googleapis.com/v1beta/interactions`;
-      const intRes = await fetch(interactionsEndpoint, {
+      const oaiEndpoint = `https://generativelanguage.googleapis.com/v1beta/openai/images/generations`;
+      const oaiRes = await fetch(oaiEndpoint, {
         method: 'POST',
         headers: {
-          'x-goog-api-key': apiKey,
+          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: 'gemini-3.1-flash-image',
-          input: [{ type: 'text', text: `Vertical 9:16: ${cleanPrompt}` }]
+          model: 'gemini-2.5-flash-image',
+          prompt: cleanPrompt,
+          response_format: 'b64_json',
+          n: 1
         })
       });
 
-      if (intRes.ok) {
-        const intData = await intRes.json();
-        const b64 = intData?.output_image?.data;
-        const mime = intData?.output_image?.mime_type || 'image/jpeg';
-        if (b64) return `data:${mime};base64,${b64}`;
+      if (oaiRes.ok) {
+        const oaiData = await oaiRes.json();
+        const b64 = oaiData?.data?.[0]?.b64_json;
+        if (b64) return `data:image/jpeg;base64,${b64}`;
       }
-    } catch (intErr) {
-      console.warn('[ImageGen] Interactions fallback skipped:', intErr);
+    } catch (oaiErr) {
+      console.warn('[ImageGen] OpenAI compatibility endpoint skipped:', oaiErr);
     }
+  } else {
+    showToast('💡 Tips: Pasang Gemini API Key gratis di menu Config / API untuk generate AI photorealistic!');
   }
 
-  // 2. Secondary Strategy: High-Speed AI Image Generation via Pollinations (Zero-Key, 100% Reliable, Real AI)
-  try {
-    const encodedPrompt = encodeURIComponent(cleanPrompt.substring(0, 350));
-    const seed = Math.floor(Math.random() * 9999999);
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=720&height=1280&nologo=true&seed=${seed}`;
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
-    
-    const pollRes = await fetch(pollinationsUrl, { signal: controller.signal });
-    clearTimeout(timeoutId);
-    
-    if (pollRes.ok) {
-      const blob = await pollRes.blob();
-      const base64DataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-      if (base64DataUrl && base64DataUrl.length > 100) {
-        return base64DataUrl;
-      }
-      if (b64) return `data:${mime};base64,${b64}`;
-    }
-  } catch (pollErr) {
-    console.warn('[ImageGen] Pollinations AI engine exception:', pollErr);
-  }
-
-  // 3. Final Strategy: Client-side Procedural Canvas Visual Asset (Offline & 100% Guaranteed)
+  // 2. High-Fidelity Studio Reference Anchor Canvas (Offline / Fallback)
   return generateProceduralAssetCanvas(cleanPrompt, aspectRatio);
 }
 
@@ -3157,6 +3346,10 @@ Generate the official Master Asset Sheet prompt in English for Gemini Banana Pro
     state.project.lastSyncedNarrative = rawInput;
     if (els.inputAssetPrompt) {
       els.inputAssetPrompt.value = aiPrompt;
+      els.inputAssetPrompt.scrollTop = 0;
+    }
+    if (els.inputAssetPromptFocus) {
+      els.inputAssetPromptFocus.value = aiPrompt;
     }
     saveCurrentProject();
     renderAssetSheetUI();
@@ -3172,6 +3365,10 @@ Generate the official Master Asset Sheet prompt in English for Gemini Banana Pro
     state.project.lastSyncedNarrative = rawInput;
     if (els.inputAssetPrompt) {
       els.inputAssetPrompt.value = fallback.prompt;
+      els.inputAssetPrompt.scrollTop = 0;
+    }
+    if (els.inputAssetPromptFocus) {
+      els.inputAssetPromptFocus.value = fallback.prompt;
     }
     saveCurrentProject();
     renderAssetSheetUI();
@@ -3465,6 +3662,229 @@ async function handleGenerateAssetSheet() {
   }
 }
 
+function parseStoryNarrative(rawInput, fallbackTheme = 'bebas') {
+  const text = (rawInput || '').trim();
+  const cleanTheme = fallbackTheme === 'bebas' ? 'Cinematic Atmospheric' : fallbackTheme;
+  
+  if (!text) {
+    return {
+      title: 'DAILY CINEMATIC SHORT',
+      subject: 'Sinematik Eksplorasi',
+      coreIdea: `Eksplorasi visual terfokus dalam estetika ${cleanTheme}.`,
+      character: 'Sosok protagonis utama dengan karakteristik visual konsisten.',
+      object: 'Hero item simbolik utama yang menjadi jangkar cerita.',
+      location: 'Lingkungan atmosferik modern dengan pencahayaan sinematik terarah.',
+      action: 'Aksi naratif dinamis yang menggerakkan perkembangan cerita.',
+      transformation: 'Perubahan tensi dari misteri awal menuju klimaks memukau.',
+      visualMoments: [
+        'Pembukaan dramatis membangun suasana misterius dan menghentikan scrolling penonton',
+        'Transisi pencahayaan sinematik menembus material dan tekstur utama',
+        'Detail macro intim yang memperlihatkan keunikan objek secara visual',
+        'Eskalasi situasi dinamis yang memicu rasa penasaran dan tensi tinggi',
+        'Payoff visual megah dengan komposisi simetris yang memuaskan dan berkesan'
+      ],
+      visualDNA: {
+        camera: '35mm anamorphic, steady deliberate tracking, subtle micro-drift',
+        lighting: 'High-contrast cinematic key lighting, deep rich shadow separation',
+        color: 'Deep charcoal, rich earth tones, luminous highlight accents',
+        texture: 'Organic tactile surfaces, fine natural 35mm film grain',
+        atmosphere: `Immersive, modern, ${cleanTheme}`
+      },
+      adaptation: [
+        '1. Pendekatan dokumenter realistis (Observasional intim)',
+        '2. Pendekatan sinematik naratif (PRIMARY DIRECTION)',
+        '3. Pendekatan commercial luxury editorial (Visual glossy berkecepatan tinggi)'
+      ],
+      primaryDirection: `Sinematik naratif 60 detik dalam 6 scene dengan estetika ${cleanTheme}.`
+    };
+  }
+
+  // 1. Line-by-line parsing and metadata extraction
+  const rawLines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  let explicitFormat = '';
+  let explicitDuration = '';
+  let explicitStyle = '';
+  let explicitCharacter = '';
+  let explicitLocation = '';
+  let narrativeLines = [];
+
+  for (const line of rawLines) {
+    const cleanedLine = cleanMarkdownFormatting(line);
+    const lower = cleanedLine.toLowerCase();
+
+    if (lower.startsWith('format:') || lower.startsWith('rasio:')) {
+      explicitFormat = cleanedLine.replace(/^(format|rasio):\s*/i, '').trim();
+    } else if (lower.startsWith('durasi:') || lower.startsWith('duration:')) {
+      explicitDuration = cleanedLine.replace(/^(durasi|duration):\s*/i, '').trim();
+    } else if (lower.startsWith('style:') || lower.startsWith('gaya:')) {
+      explicitStyle = cleanedLine.replace(/^(style|gaya):\s*/i, '').trim();
+    } else if (lower.startsWith('karakter:') || lower.startsWith('character:') || lower.startsWith('tokoh:')) {
+      explicitCharacter = cleanedLine.replace(/^(karakter|character|tokoh):\s*/i, '').trim();
+    } else if (lower.startsWith('lokasi:') || lower.startsWith('setting:') || lower.startsWith('tempat:')) {
+      explicitLocation = cleanedLine.replace(/^(lokasi|setting|tempat):\s*/i, '').trim();
+    } else if (!lower.startsWith('http') && !lower.startsWith('video referensi:')) {
+      narrativeLines.push(cleanedLine);
+    }
+  }
+
+  // 2. Extract clean Subject & Title
+  const firstSentence = narrativeLines[0] || cleanMarkdownFormatting(rawLines[0]) || 'Daily Short Story';
+  let cleanSubject = firstSentence
+    .replace(/^([0-9]+\.|\-|\*)\s*/, '')
+    .replace(/^judul:\s*/i, '')
+    .trim();
+
+  let cleanTitle = cleanSubject.toUpperCase();
+  if (cleanSubject.length > 70) {
+    cleanSubject = cleanSubject.slice(0, 70).trim();
+  }
+
+  // 3. Archetype & Domain Detection
+  const combinedText = (text + ' ' + explicitStyle).toLowerCase();
+  
+  let isOffice = /assistant|boss|office|kantor|corporate|eksekutif|executive|meeting|vlog|day in my life|kerja|career|bisnis/i.test(combinedText);
+  let isSciFi = /astronaut|space|antariksa|planet|galaxy|bintang|alien|sci-?fi|cyberpunk|robot|futuristik/i.test(combinedText);
+  let isLuxury = /parfum|perfume|luxury|mewah|perhiasan|jewelry|fashion|jam tangan|watch|editorial|supercar/i.test(combinedText);
+  let isFood = /makanan|food|kopi|coffee|chef|kuliner|restoran|kitchen|artisan|masak/i.test(combinedText);
+  let isNature = /semut|ant|hewan|animal|alam|nature|hutan|forest|macro|koloni|laut|ocean/i.test(combinedText);
+
+  let characterDesc = explicitCharacter;
+  let objectDesc = '';
+  let locationDesc = explicitLocation;
+  let actionDesc = '';
+  let transformationDesc = '';
+  let visualMoments = [];
+  let visualDNA = {
+    camera: '35mm & 50mm cinematic lens, deliberate tracking, subtle micro-drift',
+    lighting: 'High-contrast cinematic key lighting, deep rich shadow separation',
+    color: 'Deep charcoal, rich earth tones, luminous highlight accents',
+    texture: 'Tactile organic surfaces, fine 35mm natural grain',
+    atmosphere: `Engaging, immersive, ${explicitStyle || cleanTheme}`
+  };
+
+  if (isOffice) {
+    if (!characterDesc) characterDesc = `${cleanSubject} — sosok profesional muda berpenampilan smart-casual eksekutif, postur tegap, ekspresi fokus dan karismatik.`;
+    objectDesc = 'Smartphone flagship, tablet perencana digital, secangkir kopi segar, berkas dokumen eksekutif, ID lanyard kantor.';
+    if (!locationDesc) locationDesc = 'High-rise executive office, lobby marmer pencakar langit, koridor kaca minimalis, ruang boardroom modern.';
+    actionDesc = 'Mengatur jadwal krusial, melangkah tegas di koridor kaca, koordinasi cepat, dan momen tenang refleksi di depan panorama gedung kota.';
+    transformationDesc = 'Dari kesibukan ritme pagi yang padat menuju kontrol penuh dan keberhasilan eksekusi di penghujung hari.';
+    visualMoments = [
+      `Opening Hook: Langkah tegas di lantai marmer lobby mewah dengan pantulan cahaya fajar gedung pencakar langit`,
+      `Detail Macro: Sentuhan jari pada layar tablet membuka agenda harian di samping secangkir espresso artisanal`,
+      `Transisi Dinamis: Menyiapkan berkas di ruang boardroom berdinding kaca panorama dengan pencahayaan natural`,
+      `Momen Tensi: Koordinasi terarah di koridor eksekutif saat jam kerja sibuk berlatar cityscape metropolis`,
+      `Payoff Visual: Berdiri percaya diri menatap senja keemasan kota melalui kaca jendela kantor lantai tertinggi`
+    ];
+    visualDNA.lighting = 'Natural high-rise daylight through architectural glass, soft diffused office key lights';
+    visualDNA.color = 'Charcoal black, crisp corporate navy, warm amber coffee tones, neutral clean white';
+  } else if (isSciFi) {
+    if (!characterDesc) characterDesc = `${cleanSubject} — penjelajah antariksa dengan spacesuit modular canggih, helm kaca ber-HUD holografik.`;
+    objectDesc = 'Modul scanner kuantum, perangkat pengambil sampel terraform, reaktor energi plasma mini.';
+    if (!locationDesc) locationDesc = 'Permukaan planet eksotis tak dikenal, lanskap kristal bercahaya, stasiun orbital futuristik.';
+    actionDesc = 'Mendarat di medan terjal, melakukan pemindaian atmosfer asing, dan menemukan artefak energi kuno.';
+    transformationDesc = 'Dari keterasingan di alam semesta tak berujung menuju penemuan teknologi masa depan.';
+    visualMoments = [
+      `Opening Hook: Refleksi kosmik di visor helm saat melangkah pertama kali di atmosfer planet asing`,
+      `Detail Macro: Pemindai holografik menganalisis debu kristal bercahaya di telapak tangan`,
+      `Transisi Dinamis: Menjelajahi formasi batuan raksasa dengan pencahayaan dua matahari kembar`,
+      `Momen Tensi: Peringatan anomali radiasi pada layar helm di tengah medan gravitasi berfluktuasi`,
+      `Payoff Visual: Aktivasi gerbang monolit kuno yang memancarkan pilar cahaya vertikal ke angkasa`
+    ];
+    visualDNA.lighting = 'Bioluminescent ambient glow, sharp stellar key light, anamorphic lens flares';
+    visualDNA.color = 'Deep obsidian space, vibrant cyan HUD accents, celestial violet, warm solar gold';
+  } else if (isLuxury) {
+    if (!characterDesc) characterDesc = `${cleanSubject} — sosok elegan berbusana haute couture modern dengan pesona misterius dan anggun.`;
+    objectDesc = 'Botol kristal bersegi presisi, perhiasan emas murni, cairan beraroma mewah dengan kilau mikro partikel.';
+    if (!locationDesc) locationDesc = 'Studio minimalis berarsitektur marmer hitam, ruang instalasi cermin tak terhingga, penthouse elegan.';
+    actionDesc = 'Sentuhan lembut pada material premium, semburan partikel parfum dalam slow-motion 1000fps.';
+    transformationDesc = 'Perpaduan indra dari keheningan minimalis menuju ledakan visual kemewahan abadi.';
+    visualMoments = [
+      `Opening Hook: Refleksi siluet elegan di atas lantai cermin hitam dengan tetesan cairan emas mikro`,
+      `Detail Macro: Butiran embun mikro berkilau di atas permukaan botol kristal bertekstur tajam`,
+      `Transisi Dinamis: Gelombang kain sutra hitam melayang halus mengelilingi hero objek produk`,
+      `Momen Tensi: Semburan partikel parfum aerosol dalam pencahayaan kontras tinggi slow-motion`,
+      `Payoff Visual: Komposisi hero shot simetris sempurna produk bermandikan cahaya aksen mewah 8K`
+    ];
+    visualDNA.lighting = 'Commercial studio rim lighting, laser-precise spotlighting, dramatic chiaroscuro';
+    visualDNA.color = 'Deep velvet black, 24k champagne gold, pure diamond highlights, rich earth undertones';
+  } else if (isNature) {
+    if (!characterDesc) characterDesc = `${cleanSubject} — pengamat alam atau subjek makro organik dengan anatomi alami yang memukau.`;
+    objectDesc = 'Struktur sarang geometris, tetesan embun murni di ujung daun, serat kayu alami berlumut.';
+    if (!locationDesc) locationDesc = 'Hutan hujan tropis subuh hari, lantai kanopi organik, ekosistem makro tersembunyi.';
+    actionDesc = 'Pergerakan mikro yang presisi, kerjasama koloni dalam arsitektur alam, interaksi dengan tetesan air.';
+    transformationDesc = 'Dari skala tak kasat mata menjadi panggung kehidupan epik yang penuh keajaiban.';
+    visualMoments = [
+      `Opening Hook: Lensa probe makro menyusuri terowongan tersembunyi di bawah dedaunan berlumut`,
+      `Detail Macro: Tetesan air embun memantulkan seluruh kanopi hutan di mata faset subjek`,
+      `Transisi Dinamis: Rantai pergerakan serentak ribuan elemen mikro melintasi jembatan ranting alami`,
+      `Momen Tensi: Rintangan tetesan air hujan besar yang jatuh bagai meteor di skala mikro`,
+      `Payoff Visual: Arsitektur megah koloni di bawah terpaan sinar matahari pagi golden hour`
+    ];
+    visualDNA.lighting = 'Golden hour sun rays slicing through morning mist, soft organic sub-surface scattering';
+    visualDNA.color = 'Lush emerald green, rich humus brown, glowing amber highlights, morning fog white';
+  } else if (isFood) {
+    if (!characterDesc) characterDesc = `${cleanSubject} — artisan master chef dengan keterampilan tangan presisi dan dedikasi mendalam.`;
+    objectDesc = 'Pisau Damascus tempaan tangan, cangkir keramik artisanal, biji kopi single-origin, bahan segar musiman.';
+    if (!locationDesc) locationDesc = 'Dapur terbuka bermaterial kayu jati dan batu basal, kedai kopi minimalis di sudut kota tua.';
+    actionDesc = 'Proses ekstraksi presisi, pengirisan bahan dalam irama ritmis, kepulan uap hangat beraroma.';
+    transformationDesc = 'Dari bahan mentah sederhana menjadi karya seni gastronomi yang menggugah emosi.';
+    visualMoments = [
+      `Opening Hook: Tuangan air panas pertama di atas bubuk kopi segar melepaskan kepulan uap aromatik`,
+      `Detail Macro: Tekstur pisau baja Damascus membelah bahan segar dengan ketajaman presisi`,
+      `Transisi Dinamis: Percikan minyak panas dan api melompat anggun dalam wajan tembaga`,
+      `Momen Tensi: Detik-detik akhir plating dengan sentuhan pinset gastronomi di atas piring keramik hitam`,
+      `Payoff Visual: Sajian hero moment sempurna dengan tekstur berkilau dan uap tipis menggoda selera`
+    ];
+    visualDNA.lighting = 'Warm directional tungsten key, soft steam backlight, intimate kitchen ambience';
+    visualDNA.color = 'Deep espresso brown, warm terracotta, crisp culinary herbs green, molten gold accents';
+  } else {
+    if (!characterDesc) characterDesc = `${cleanSubject} — tokoh sentral dengan tampilan autentik, ekspresi berkarakter kuat, dan busana sinematik.`;
+    objectDesc = 'Item simbolik hero yang menjadi jangkar cerita dan pengingat emosional sang tokoh.';
+    if (!locationDesc) locationDesc = `Lingkungan atmosferik pendukung ${cleanSubject} dengan karakter arsitektur yang kuat.`;
+    actionDesc = 'Aksi visual terencana yang memicu rasa ingin tahu pemirsa sejak detik pertama.';
+    transformationDesc = 'Perkembangan tensi visual dari eksposisi awal menuju penyelesaian yang memukau.';
+    visualMoments = [
+      `Opening Hook: Pembukaan visual dramatis memperkenalkan ${cleanSubject} dengan sudut pandang mengejutkan`,
+      `Detail Macro: Transisi pencahayaan sinematik menembus tekstur material utama hero objek`,
+      `Transisi Dinamis: Pergerakan kamera dinamis memperlihatkan ruang lingkup dunia cerita secara intim`,
+      `Momen Tensi: Peningkatan skala dan tensi visual yang memicu rasa penasaran pemirsa`,
+      `Payoff Visual: Komposisi simetris megah sebagai klimaks memuaskan video short 60 detik`
+    ];
+  }
+
+  const coreIdea = `Dokumentasi visual sinematik tentang ${cleanSubject}${explicitStyle ? ` dalam gaya ${explicitStyle}` : ` dengan estetika ${cleanTheme}`}.`;
+
+  return {
+    title: cleanTitle.slice(0, 40),
+    subject: cleanSubject,
+    coreIdea: coreIdea,
+    format: explicitFormat || 'Vertical 9:16',
+    duration: explicitDuration || '±45–60 detik',
+    style: explicitStyle || cleanTheme,
+    character: characterDesc,
+    object: objectDesc,
+    location: locationDesc,
+    action: actionDesc,
+    transformation: transformationDesc,
+    visualMoments: visualMoments,
+    storyElements: {
+      character: characterDesc,
+      object: objectDesc,
+      location: locationDesc,
+      action: actionDesc,
+      transformation: transformationDesc
+    },
+    facts: `Fokus pada kekuatan komposisi visual 9:16 dan kesinambungan identitas ${cleanSubject}.`,
+    visualDNA: visualDNA,
+    adaptation: [
+      `1. Pendekatan dokumenter realistis (${cleanSubject})`,
+      `2. Pendekatan sinematik naratif (PRIMARY DIRECTION)`,
+      `3. Pendekatan commercial luxury editorial`
+    ],
+    primaryDirection: `Sinematik naratif 60 detik dalam 6 scene dengan estetika ${explicitStyle || cleanTheme}.`
+  };
+}
+
 function generateDefaultAssetSheet(masterPack, continuityLevel, sourcePack, forcedType = null) {
   let type = forcedType;
   if (!type) {
@@ -3477,61 +3897,43 @@ function generateDefaultAssetSheet(masterPack, continuityLevel, sourcePack, forc
   // 1. Raw story narrative from Section 1
   const rawInput = state.project.sourceInput?.trim() || els.inputReference?.value?.trim() || '';
 
-  // 2. Intelligent subject extraction: Prioritize user's fresh story narrative directly!
-  let subject = '';
-  let location = '';
+  // 2. Intelligent narrative parsing
+  const parsed = parseStoryNarrative(rawInput, state.project.theme);
+  let subject = parsed.subject;
+  let location = parsed.location;
 
-  if (rawInput) {
-    // Clean rawInput (remove video reference prefix or URLs if any)
-    const cleanLines = rawInput.split('\n')
-      .map(l => l.trim())
-      .filter(l => l && !l.startsWith('http') && !l.toLowerCase().startsWith('video referensi:') && !l.toLowerCase().startsWith('link:'));
-    const firstCleanLine = cleanLines[0] || rawInput;
-    // Extract first sentence or up to 140 characters
-    const firstSentence = firstCleanLine.split(/[.!?]/)[0]?.trim() || firstCleanLine;
-    subject = firstSentence.slice(0, 140);
-    location = `cinematic environment based on "${subject.slice(0, 60)}"`;
-  }
-
-  // Fallback to structured sourcePack only if rawInput had no subject
-  if (!subject && sourcePack) {
+  // Fallback to structured sourcePack if provided and has custom values
+  if (sourcePack && sourcePack.subject && !sourcePack.subject.startsWith('Eksplorasi visual terfokus: #')) {
     const char = sourcePack.storyElements?.character;
     const obj = sourcePack.storyElements?.object;
     const loc = sourcePack.storyElements?.location;
     if (type === 'character' && char && !char.includes('Sosok pengamat') && !char.includes('elemen sentral')) {
-      subject = char;
+      subject = cleanMarkdownFormatting(char);
     } else if (type === 'object' && obj && !obj.includes('Objek simbolik')) {
-      subject = obj;
-    } else if (sourcePack.subject && !sourcePack.subject.startsWith('Eksplorasi visual terfokus:')) {
-      subject = sourcePack.subject;
+      subject = cleanMarkdownFormatting(obj);
+    } else if (sourcePack.subject) {
+      subject = cleanMarkdownFormatting(sourcePack.subject);
     }
     if (loc && !loc.includes('Lingkungan berkarakter')) {
-      location = loc;
+      location = cleanMarkdownFormatting(loc);
     }
   }
 
-  if (!subject) {
-    subject = masterPack?.title || 'Protagonist hero character';
-  }
+  const title = cleanMarkdownFormatting(masterPack?.title || parsed.title || 'Daily Short Video');
+  const style = masterPack?.visualStyle || parsed.style || (state.project.theme && state.project.theme !== 'bebas' ? state.project.theme : 'Cinematic Photorealism');
+  const color = masterPack?.globalVisualLock?.colorPalette || parsed.visualDNA?.color || 'High contrast film grade, balanced tones';
+  const lighting = masterPack?.globalVisualLock?.lightingLanguage || parsed.visualDNA?.lighting || 'Studio key lighting with subtle cinematic rim highlights';
 
-  if (!location) {
-    location = 'atmospheric cinematic environment';
-  }
-
-  const title = masterPack?.title || (rawInput ? subject.slice(0, 40) : 'Daily Short Video');
-  const style = masterPack?.visualStyle || (state.project.theme && state.project.theme !== 'bebas' ? state.project.theme : 'Cinematic Photorealism');
-  const color = masterPack?.globalVisualLock?.colorPalette || 'High contrast film grade, balanced tones';
-  const lighting = masterPack?.globalVisualLock?.lightingLanguage || 'Studio key lighting with subtle cinematic rim highlights';
-
-  // Story context snippet (up to 150 chars)
-  const storySnippet = rawInput ? ` Narrative lore: "${rawInput.slice(0, 150).replace(/[\r\n]+/g, ' ')}".` : '';
+  // Story context snippet (clean narrative concept)
+  const contextText = parsed.coreIdea || cleanMarkdownFormatting(rawInput ? rawInput.slice(0, 140).replace(/[\r\n]+/g, ' ') : '');
+  const storySnippet = contextText ? ` Narrative context: "${contextText}".` : '';
 
   let prompt = '';
   let sheetTitle = '';
 
   if (type === 'character') {
     sheetTitle = 'Character Turnaround Model Sheet';
-    prompt = `Character turnaround model sheet and master visual reference sheet of ${subject}.${storySnippet} Showing multi-angle views (front view, 3/4 perspective, and side profile) in unified 9:16 vertical composition. Authentic cinematic wardrobe, realistic textures, and distinctive gear. Clean neutral studio gradient background, shot on 50mm portrait lens, 8k resolution, razor-sharp facial details, consistent skin texture and hairstyle, ${lighting}, color grade: ${color} --ar 9:16 --no multiple different people, deformed hands, extra limbs, cartoon, watermark, blur`;
+    prompt = `Character turnaround model sheet and master visual reference sheet of ${subject}.${storySnippet} Showing multi-angle turnaround views (front view, 3/4 hero perspective, and side profile) in unified 9:16 vertical composition. Authentic cinematic wardrobe, realistic textures, distinctive gear. Clean neutral studio gradient background, shot on 50mm portrait lens, 8k resolution, razor-sharp facial details, consistent skin texture and hairstyle, ${lighting}, color grade: ${color} --ar 9:16 --no multiple different people, deformed hands, extra limbs, cartoon, watermark, blur`;
   } else if (type === 'object') {
     sheetTitle = 'Object & Product Turntable Sheet';
     prompt = `Product design turntable 360 reference sheet of ${subject}.${storySnippet} Showcasing multi-angle orthographic and hero perspective views in unified 9:16 vertical layout. Commercial product photography with razor-sharp macro surface textures, material reflections, pristine details, ${lighting}, color palette: ${color}, clean minimal backdrop, commercial masterpiece --ar 9:16 --no blurry, distorted proportions, extra clutter, text`;
@@ -3559,46 +3961,7 @@ function generateDefaultAssetSheet(masterPack, continuityLevel, sourcePack, forc
 // ==========================================
 
 function generateSmartSourcePack(input, theme) {
-  const cleanTheme = theme === 'bebas' ? 'Cinematic Atmospheric' : theme;
-  const rawInput = input?.trim() || '';
-  const cleanLines = rawInput.split('\n')
-    .map(l => l.trim())
-    .filter(l => l && !l.startsWith('http') && !l.toLowerCase().startsWith('video referensi:'));
-  const firstSentence = (cleanLines[0] || rawInput).split(/[.!?]/)[0]?.trim() || rawInput;
-  const subjectName = firstSentence ? firstSentence.slice(0, 100) : 'Sinematik Eksplorasi';
-
-  return {
-    subject: subjectName,
-    coreIdea: `Interpretasi visual tentang ${subjectName.slice(0, 80)} dalam gaya ${cleanTheme}.`,
-    visualMoments: [
-      `Pembukaan dramatis memperkenalkan ${subjectName.slice(0, 50)}`,
-      "Transisi pencahayaan dramatis menembus tekstur material utama",
-      "Detail macro yang memperlihatkan keunikan objek secara intim",
-      "Perubahan situasi atau pergerakan dinamis yang memicu tensi",
-      "Payoff visual megah dengan komposisi simetris yang memukau"
-    ],
-    storyElements: {
-      character: `${subjectName.slice(0, 70)} (Tokoh Sentral)`,
-      object: "Elemen simbolik hero objek yang menjadi jangkar cerita",
-      location: `Lingkungan atmosferik pendukung ${subjectName.slice(0, 50)}`,
-      action: "Aksi visual terencana dan dinamis",
-      transformation: "Perubahan atmosfer dari ketegangan menuju klimaks visual"
-    },
-    facts: "Fokus pada kekuatan komposisi visual 9:16 daripada teks penjelasan panjang.",
-    visualDNA: {
-      camera: "35mm cinematic anamorphic, slow deliberate tracking, subtle micro-drift",
-      lighting: "High-contrast cinematic key lighting, deep rich shadow separation",
-      color: "Palette disesuaikan dengan warna alami subjek dan aksen dramatis",
-      texture: "Organic tactile surfaces, fine natural film grain",
-      atmosphere: `Enigmatic, engaging, ${cleanTheme}`
-    },
-    adaptation: [
-      `1. Pendekatan dokumenter realistis`,
-      `2. Pendekatan sinematik naratif (PRIMARY DIRECTION)`,
-      `3. Pendekatan commercial luxury editorial`
-    ],
-    primaryDirection: `Sinematik naratif 60 detik dalam 6 scene dengan estetika ${cleanTheme}.`
-  };
+  return parseStoryNarrative(input, theme);
 }
 
 function generateSmartMasterAndScenes(sourcePack, theme, level) {
@@ -4021,6 +4384,10 @@ function renderAssetSheetUI() {
       if (!state.project.assetSheet) state.project.assetSheet = generated;
       else state.project.assetSheet.prompt = generated.prompt;
       els.inputAssetPrompt.value = generated.prompt;
+    }
+    els.inputAssetPrompt.scrollTop = 0;
+    if (els.inputAssetPromptFocus) {
+      els.inputAssetPromptFocus.value = els.inputAssetPrompt.value;
     }
   }
   if (els.inputAssetNegative && as?.negativePrompt) {
