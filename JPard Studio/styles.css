@@ -81,6 +81,17 @@ code, pre, .font-mono {
   border-radius: 0.875rem;
 }
 
+.bg-dark-card\/60,
+.bg-dark-card\/50,
+.bg-dark-card\/40,
+.bg-dark-card-subtle {
+  background-color: rgba(255, 255, 255, 0.035) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 0.875rem;
+}
+
 .border-dark-border {
   border-color: var(--apple-border) !important;
 }

@@ -2521,224 +2521,197 @@ function generateProceduralAssetCanvas(promptText, aspectRatio = '9:16') {
   canvas.height = 1280;
   const ctx = canvas.getContext('2d');
 
-  // Background: Deep obsidian film studio darkroom
+  // Background: Deep cinematic film darkroom gradient
   const bgGrad = ctx.createLinearGradient(0, 0, 720, 1280);
-  bgGrad.addColorStop(0, '#090b14');
-  bgGrad.addColorStop(0.4, '#06070c');
-  bgGrad.addColorStop(0.8, '#0b0914');
-  bgGrad.addColorStop(1, '#05060a');
+  bgGrad.addColorStop(0, '#060810');
+  bgGrad.addColorStop(0.3, '#0b0e1c');
+  bgGrad.addColorStop(0.7, '#070912');
+  bgGrad.addColorStop(1, '#040508');
   ctx.fillStyle = bgGrad;
   ctx.fillRect(0, 0, 720, 1280);
 
-  // Studio lighting cone: Subtle volumetric top-down spotlight
-  const spotGrad = ctx.createRadialGradient(360, 200, 40, 360, 520, 450);
-  spotGrad.addColorStop(0, 'rgba(168, 85, 247, 0.16)');
-  spotGrad.addColorStop(0.5, 'rgba(245, 158, 11, 0.06)');
-  spotGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-  ctx.fillStyle = spotGrad;
-  ctx.fillRect(0, 0, 720, 900);
+  // Subtle anamorphic cinematic ambient light beam
+  const lightGrad = ctx.createRadialGradient(360, 420, 40, 360, 420, 480);
+  lightGrad.addColorStop(0, 'rgba(249, 115, 22, 0.12)');
+  lightGrad.addColorStop(0.4, 'rgba(168, 85, 247, 0.08)');
+  lightGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+  ctx.fillStyle = lightGrad;
+  ctx.fillRect(0, 0, 720, 1280);
 
-  // Technical framing guides & golden ratio grid
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(40, 40, 640, 1200);
-
-  const drawCross = (cx, cy, sz = 12) => {
-    ctx.strokeStyle = 'rgba(168, 85, 247, 0.25)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(cx - sz, cy); ctx.lineTo(cx + sz, cy);
-    ctx.moveTo(cx, cy - sz); ctx.lineTo(cx, cy + sz);
-    ctx.stroke();
-  };
-  drawCross(40, 40);
-  drawCross(680, 40);
-  drawCross(40, 1240);
-  drawCross(680, 1240);
-  drawCross(360, 500, 16);
-
-  // Studio Header Bar
-  ctx.fillStyle = '#f59e0b';
-  ctx.font = 'bold 12px monospace';
-  ctx.textAlign = 'left';
-  ctx.fillText('JPARD STUDIO • BANANA PRO MASTER ANCHOR', 55, 75);
-
-  ctx.fillStyle = '#a855f7';
-  ctx.font = 'bold 10px monospace';
-  ctx.textAlign = 'right';
-  ctx.fillText('RATIO 9:16 • 8K RESOLUTION', 665, 75);
-
-  // Extract clean subject title from project or prompt
-  const rawSubject = (state.project.sourcePack?.subject || '').replace(/^#+\s*/, '') ||
-                     (state.project.sourceInput ? cleanMarkdownFormatting(state.project.sourceInput).slice(0, 45) : 'MASTER CHARACTER TURNAROUND');
-  const displayTitle = cleanMarkdownFormatting(rawSubject).toUpperCase().slice(0, 45);
-
-  // Prominent Subject Title
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 22px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(displayTitle, 360, 120);
-
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '11px monospace';
-  ctx.fillText('MULTI-ANGLE CONTINUITY SPECIFICATION SHEET', 360, 142);
-
-  // Center Stage Card
-  const stageGrad = ctx.createLinearGradient(100, 165, 620, 870);
-  stageGrad.addColorStop(0, 'rgba(15, 18, 30, 0.85)');
-  stageGrad.addColorStop(1, 'rgba(10, 12, 22, 0.95)');
-  ctx.fillStyle = stageGrad;
-  if (ctx.roundRect) ctx.roundRect(80, 165, 560, 715, 20);
-  else ctx.rect(80, 165, 560, 715);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(168, 85, 247, 0.35)';
+  // Cinematic 9:16 Viewfinder Frame
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
   ctx.lineWidth = 1.5;
-  ctx.stroke();
+  ctx.strokeRect(36, 36, 648, 1208);
 
-  // Draw 3 Realistic Stylized Turnaround Figures (Front, 3/4, Profile)
-  const drawTurnaroundHero = (x, y, label, angle) => {
-    // Height marker line behind figure
-    ctx.strokeStyle = 'rgba(148, 163, 184, 0.15)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(x - 50, y - 160);
-    ctx.lineTo(x + 50, y - 160);
-    ctx.moveTo(x - 50, y + 170);
-    ctx.lineTo(x + 50, y + 170);
-    ctx.stroke();
-
-    // Ambient shadow on platform
-    const platGrad = ctx.createRadialGradient(x, y + 170, 5, x, y + 170, 60);
-    platGrad.addColorStop(0, 'rgba(0, 0, 0, 0.8)');
-    platGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = platGrad;
-    ctx.beginPath();
-    ctx.ellipse(x, y + 170, 60, 14, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Figure silhouette: realistic human proportions
-    ctx.save();
-    // Head with styled hair contour
-    ctx.fillStyle = '#1e2438';
-    ctx.beginPath();
-    ctx.arc(x, y - 110, 28, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Neck
-    ctx.fillRect(x - 9, y - 84, 18, 22);
-
-    // Torso / Suit Jacket
-    ctx.beginPath();
-    ctx.moveTo(x - 38, y - 62);
-    ctx.lineTo(x + 38, y - 62);
-    ctx.lineTo(x + 30, y + 55);
-    ctx.lineTo(x - 30, y + 55);
-    ctx.closePath();
-    ctx.fill();
-
-    // Legs / Trousers
-    ctx.fillRect(x - 26, y + 55, 22, 110);
-    ctx.fillRect(x + 4, y + 55, 22, 110);
-
-    // Dual-Tone Rim Lighting on Figure Contours (Golden Key + Violet Rim)
-    // Amber Key Light (Right edge)
+  // Corner brackets (Viewfinder style)
+  const drawCorner = (x, y, dx, dy, len = 24) => {
     ctx.strokeStyle = '#f59e0b';
     ctx.lineWidth = 2.5;
     ctx.beginPath();
-    ctx.arc(x, y - 110, 28, -Math.PI / 4, Math.PI / 4);
-    ctx.moveTo(x + 38, y - 62);
-    ctx.lineTo(x + 30, y + 55);
-    ctx.lineTo(x + 26, y + 165);
+    ctx.moveTo(x + dx * len, y);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x, y + dy * len);
     ctx.stroke();
-
-    // Violet Rim Light (Left edge)
-    ctx.strokeStyle = '#c084fc';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(x, y - 110, 28, Math.PI * 0.75, Math.PI * 1.25);
-    ctx.moveTo(x - 38, y - 62);
-    ctx.lineTo(x - 30, y + 55);
-    ctx.lineTo(x - 26, y + 165);
-    ctx.stroke();
-
-    // Collar / Lapel V-shape
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(x - 14, y - 62);
-    ctx.lineTo(x, y - 20);
-    ctx.lineTo(x + 14, y - 62);
-    ctx.stroke();
-
-    ctx.restore();
-
-    // Angle Badge Tag
-    ctx.fillStyle = '#0a0d18';
-    if (ctx.roundRect) ctx.roundRect(x - 52, y + 205, 104, 28, 6);
-    else ctx.rect(x - 52, y + 205, 104, 28);
-    ctx.fill();
-    ctx.strokeStyle = '#a855f7';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = 'bold 11px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText(label, x, y + 223);
   };
+  drawCorner(36, 36, 1, 1);
+  drawCorner(684, 36, -1, 1);
+  drawCorner(36, 1244, 1, -1);
+  drawCorner(684, 1244, -1, -1);
 
-  drawTurnaroundHero(210, 480, 'FRONT 0°', 'front');
-  drawTurnaroundHero(360, 450, 'HERO 3/4 45°', 'hero');
-  drawTurnaroundHero(510, 480, 'PROFILE 90°', 'profile');
+  // Center crosshair
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(350, 480); ctx.lineTo(370, 480);
+  ctx.moveTo(360, 470); ctx.lineTo(360, 490);
+  ctx.stroke();
 
-  // Palette Swatches Bar
+  // Rule of thirds subtle grid lines in preview area
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(36 + 216, 120); ctx.lineTo(36 + 216, 840);
+  ctx.moveTo(36 + 432, 120); ctx.lineTo(36 + 432, 840);
+  ctx.moveTo(36, 120 + 240); ctx.lineTo(684, 120 + 240);
+  ctx.moveTo(36, 120 + 480); ctx.lineTo(684, 120 + 480);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Top Bar: Studio & Camera Meta
+  ctx.fillStyle = '#f59e0b';
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText('JPARD CINEMATICS • MASTER FRAME SLATE', 56, 72);
+
+  ctx.fillStyle = '#38bdf8';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillText('9:16 VERTICAL • 35MM ANAMORPHIC', 664, 72);
+
+  // Storyboard Preview Stage Plate
+  const stageGrad = ctx.createLinearGradient(60, 110, 660, 850);
+  stageGrad.addColorStop(0, 'rgba(18, 22, 38, 0.7)');
+  stageGrad.addColorStop(1, 'rgba(10, 13, 24, 0.9)');
+  ctx.fillStyle = stageGrad;
+  if (ctx.roundRect) ctx.roundRect(60, 110, 600, 740, 18);
+  else ctx.rect(60, 110, 600, 740);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.08)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Cinematic Clapperboard Badge in Center
+  ctx.fillStyle = 'rgba(249, 115, 22, 0.15)';
+  if (ctx.roundRect) ctx.roundRect(260, 220, 200, 40, 10);
+  else ctx.rect(260, 220, 200, 40);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(249, 115, 22, 0.4)';
+  ctx.stroke();
+
+  ctx.fillStyle = '#fb923c';
+  ctx.font = 'bold 12px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('🎬 SCENE CONCEPT FRAME', 360, 245);
+
+  // Extract clean subject title
+  const rawSubject = (state.project.sourcePack?.subject || '').replace(/^#+\s*/, '') ||
+                     (state.project.sourceInput ? cleanMarkdownFormatting(state.project.sourceInput).slice(0, 45) : 'MASTER SCENE FRAME');
+  const displayTitle = cleanMarkdownFormatting(rawSubject).toUpperCase().slice(0, 50);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(displayTitle, 360, 305);
+
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '11px monospace';
+  ctx.fillText('CONTINUITY ANCHOR • REC 709 • SHOT COMPOSITION', 360, 330);
+
+  // Film Strip Aperture Icon / Graphic in center
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+  ctx.beginPath();
+  ctx.arc(360, 470, 95, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(249, 115, 22, 0.35)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Aperture blades
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 6; i++) {
+    const angle = (i * Math.PI) / 3;
+    const x1 = 360 + Math.cos(angle) * 32;
+    const y1 = 470 + Math.sin(angle) * 32;
+    const x2 = 360 + Math.cos(angle + 0.6) * 90;
+    const y2 = 470 + Math.sin(angle + 0.6) * 90;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+
+  // Camera Settings Pill below aperture
+  ctx.fillStyle = '#0f1422';
+  if (ctx.roundRect) ctx.roundRect(160, 615, 400, 42, 12);
+  else ctx.rect(160, 615, 400, 42);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = '#38bdf8';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('APERTURE: T2.0  •  ISO: 800  •  SHUTTER: 180°  •  24 FPS', 360, 641);
+
+  // Color Swatches
   const swatches = [
-    { color: '#0d1117', label: 'Obsidian' },
-    { color: '#1e293b', label: 'Slate Navy' },
-    { color: '#f59e0b', label: 'Warm Amber' },
-    { color: '#a855f7', label: 'Violet Rim' }
+    { color: '#0d1117', label: 'Shadow' },
+    { color: '#1e293b', label: 'Tone' },
+    { color: '#f59e0b', label: 'Key Light' },
+    { color: '#c084fc', label: 'Rim Accent' }
   ];
   swatches.forEach((sw, idx) => {
-    const swX = 135 + idx * 120;
+    const swX = 145 + idx * 115;
     ctx.fillStyle = sw.color;
-    if (ctx.roundRect) ctx.roundRect(swX, 810, 24, 24, 6);
-    else ctx.rect(swX, 810, 24, 24);
+    if (ctx.roundRect) ctx.roundRect(swX, 715, 22, 22, 6);
+    else ctx.rect(swX, 715, 22, 22);
     ctx.fill();
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
     ctx.lineWidth = 1;
     ctx.stroke();
 
     ctx.fillStyle = '#94a3b8';
-    ctx.font = '9px monospace';
+    ctx.font = '10px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText(sw.label, swX + 30, 825);
+    ctx.fillText(sw.label, swX + 28, 730);
   });
 
   // Footer Director Specifications Card
-  ctx.fillStyle = '#080a12';
-  if (ctx.roundRect) ctx.roundRect(60, 900, 600, 315, 18);
-  else ctx.rect(60, 900, 600, 315);
+  ctx.fillStyle = '#090c16';
+  if (ctx.roundRect) ctx.roundRect(60, 880, 600, 335, 18);
+  else ctx.rect(60, 880, 600, 335);
   ctx.fill();
-  ctx.strokeStyle = 'rgba(168, 85, 247, 0.3)';
+  ctx.strokeStyle = 'rgba(249, 115, 22, 0.35)';
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  ctx.fillStyle = '#c084fc';
+  ctx.fillStyle = '#fb923c';
   ctx.font = 'bold 13px monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('DIRECTOR & PROMPT SPECIFICATIONS (BANANA PRO 9:16)', 85, 935);
+  ctx.fillText('DIRECTOR & PROMPT SPECIFICATIONS (9:16 FRAME)', 85, 915);
 
   ctx.fillStyle = '#64748b';
   ctx.font = '10px monospace';
-  ctx.fillText('MODEL: GEMINI-2.5-FLASH-IMAGE / IMAGEN 3 • MASTER SPEC SHEET', 85, 955);
+  ctx.fillText('ENGINE: GEMINI BANANA PRO / FLUX • CONTINUITY REFERENCE ANCHOR', 85, 935);
 
   // Clean and wrap prompt
   ctx.fillStyle = '#e2e8f0';
   ctx.font = '12px sans-serif';
-  const cleanP = cleanMarkdownFormatting(promptText || 'Master Asset Sheet').substring(0, 350);
+  const cleanP = cleanMarkdownFormatting(promptText || 'Master Scene Frame').substring(0, 380);
   const words = cleanP.split(' ');
   let line = '';
-  let yPos = 985;
+  let yPos = 965;
   for (let n = 0; n < words.length; n++) {
     const testLine = line + words[n] + ' ';
     const metrics = ctx.measureText(testLine);
@@ -2774,50 +2747,18 @@ async function callImageGeneration(promptText, aspectRatio = '9:16', referenceIm
   }
   refList = refList.slice(0, 5);
 
-  // 1. Primary Strategy: Google Gemini Official Image Generation (if user provided API Key)
+  // 1. PRIMARY STRATEGY: Google Gemini Nano Banana Image Generation (if user provided API Key)
   if (apiKey && apiKey.length >= 10) {
-    // Strategy 1A: Google Imagen 3 (:predict)
-    try {
-      const imagenEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${encodeURIComponent(apiKey)}`;
-      const imagenPayload = {
-        instances: [{ prompt: cleanPrompt }],
-        parameters: {
-          sampleCount: 1,
-          aspectRatio: aspectRatio === '9:16' ? '9:16' : '1:1',
-          outputMimeType: 'image/jpeg'
-        }
-      };
+    const geminiModels = [
+      'gemini-2.5-flash-image',
+      'gemini-3.1-flash-image',
+      'gemini-3.1-flash-lite-image',
+      'gemini-3-pro-image'
+    ];
 
-      const res = await fetch(imagenEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey
-        },
-        body: JSON.stringify(imagenPayload)
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const b64 = data?.predictions?.[0]?.bytesBase64Encoded;
-        const mime = data?.predictions?.[0]?.mimeType || 'image/jpeg';
-        if (b64) {
-          return `data:${mime};base64,${b64}`;
-        }
-      } else {
-        const errJson = await res.json().catch(() => ({}));
-        console.warn('[ImageGen] Imagen 3 predict response:', res.status, errJson);
-      }
-    } catch (err) {
-      console.warn('[ImageGen] Imagen 3 predict exception:', err);
-    }
-
-    // Strategy 1B: Google Gemini 3.1 Flash Image & Nano Banana Pro (:generateContent)
-    const geminiModels = ['gemini-3.1-flash-image', 'gemini-3-pro-image', 'gemini-3.1-flash-lite-image', 'gemini-2.5-flash-image'];
     const parts = [];
-
     if (refList.length > 0) {
-      const textPrompt = `Generate a vertical 9:16 high-quality image adhering strictly to this prompt: ${cleanPrompt}. Maintain exact character identity, visual consistency, outfit, object design, lighting, and materials matching all ${refList.length} attached visual reference assets.`;
+      const textPrompt = `Generate a vertical 9:16 high-quality photorealistic cinematic image adhering strictly to this prompt: ${cleanPrompt}. Maintain exact character identity, visual consistency, outfit, object design, lighting, and materials matching the attached visual reference assets.`;
       parts.push({ text: textPrompt });
 
       for (const ref of refList) {
@@ -2832,78 +2773,134 @@ async function callImageGeneration(promptText, aspectRatio = '9:16', referenceIm
       }
     } else {
       parts.push({
-        text: `${cleanPrompt}, 9:16 vertical aspect ratio, high resolution, cinematic masterpiece`
+        text: `${cleanPrompt}, 9:16 vertical aspect ratio, high resolution, photorealistic cinematic film still`
       });
     }
 
+    // Try generateContent with official Google endpoints
     for (const model of geminiModels) {
-      try {
-        const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
-        const payload = {
-          contents: [{ parts: parts }],
-          generationConfig: {
-            responseModalities: ["TEXT", "IMAGE"]
-          }
-        };
+      for (const apiVer of ['v1beta', 'v1']) {
+        try {
+          const endpoint = `https://generativelanguage.googleapis.com/${apiVer}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+          const payload = {
+            contents: [{ parts: parts }],
+            generationConfig: {
+              responseModalities: ["IMAGE"],
+              responseFormat: {
+                image: {
+                  aspectRatio: aspectRatio === '9:16' ? '9:16' : '1:1'
+                }
+              }
+            }
+          };
 
-        const res = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey
-          },
-          body: JSON.stringify(payload)
-        });
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey
+            },
+            body: JSON.stringify(payload)
+          });
 
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.candidates?.[0]?.content?.parts) {
-            for (const part of data.candidates[0].content.parts) {
-              if (part.inlineData?.data) {
-                const mime = part.inlineData.mimeType || 'image/jpeg';
-                return `data:${mime};base64,${part.inlineData.data}`;
+          if (res.ok) {
+            const data = await res.json();
+            const candidateParts = data?.candidates?.[0]?.content?.parts || [];
+            for (const part of candidateParts) {
+              const b64 = part.inlineData?.data || part.inline_data?.data;
+              if (b64) {
+                const mime = part.inlineData?.mimeType || part.inline_data?.mime_type || 'image/jpeg';
+                return `data:${mime};base64,${b64}`;
+              }
+            }
+          } else if (res.status === 400) {
+            // Retry with simpler config if responseFormat was rejected
+            const retryPayload = {
+              contents: [{ parts: parts }],
+              generationConfig: {
+                responseModalities: ["Image"]
+              }
+            };
+            const retryRes = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-goog-api-key': apiKey
+              },
+              body: JSON.stringify(retryPayload)
+            });
+            if (retryRes.ok) {
+              const rData = await retryRes.json();
+              const rParts = rData?.candidates?.[0]?.content?.parts || [];
+              for (const part of rParts) {
+                const b64 = part.inlineData?.data || part.inline_data?.data;
+                if (b64) {
+                  const mime = part.inlineData?.mimeType || part.inline_data?.mime_type || 'image/jpeg';
+                  return `data:${mime};base64,${b64}`;
+                }
               }
             }
           }
-        } else {
-          const errJson = await res.json().catch(() => ({}));
-          console.warn(`[ImageGen] ${model} response:`, res.status, errJson);
+        } catch (err) {
+          console.warn(`[ImageGen] ${model} (${apiVer}) exception:`, err);
         }
-      } catch (err) {
-        console.warn(`[ImageGen] ${model} exception:`, err);
       }
     }
 
-    // Strategy 1C: OpenAI Compatibility Endpoint
+    // Google OpenAI Compatibility Endpoint Fallback
     try {
       const oaiEndpoint = `https://generativelanguage.googleapis.com/v1beta/openai/images/generations`;
-      const oaiRes = await fetch(oaiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gemini-2.5-flash-image',
-          prompt: cleanPrompt,
-          response_format: 'b64_json',
-          n: 1
-        })
-      });
+      for (const oaiModel of ['gemini-2.5-flash-image', 'gemini-3-pro-image-preview']) {
+        const oaiRes = await fetch(oaiEndpoint, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: oaiModel,
+            prompt: cleanPrompt,
+            response_format: 'b64_json',
+            n: 1
+          })
+        });
 
-      if (oaiRes.ok) {
-        const oaiData = await oaiRes.json();
-        const b64 = oaiData?.data?.[0]?.b64_json;
-        if (b64) return `data:image/jpeg;base64,${b64}`;
+        if (oaiRes.ok) {
+          const oaiData = await oaiRes.json();
+          const b64 = oaiData?.data?.[0]?.b64_json;
+          if (b64) return `data:image/jpeg;base64,${b64}`;
+        }
       }
     } catch (oaiErr) {
       console.warn('[ImageGen] OpenAI compatibility endpoint skipped:', oaiErr);
     }
-  } else {
-    showToast('💡 Tips: Pasang Gemini API Key gratis di menu Config / API untuk generate AI photorealistic!');
   }
 
-  // 2. High-Fidelity Studio Reference Anchor Canvas (Offline / Fallback)
+  // 2. SECONDARY STRATEGY: High-Quality Photorealistic Engine Fallback (Pollinations Flux / SDXL)
+  // Ensures user always gets an actual cinematic photo matching their scene prompt
+  try {
+    const seed = Math.floor(Math.random() * 899999 + 100000);
+    const enhancedPrompt = `${cleanPrompt}, cinematic 9:16 vertical video frame, photorealistic 8k, dramatic documentary film lighting, high quality cinematic masterpiece`;
+    const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(enhancedPrompt)}?width=768&height=1344&model=flux&nologo=true&seed=${seed}`;
+
+    const imgRes = await fetch(pollUrl, { mode: 'cors' });
+    if (imgRes.ok) {
+      const blob = await imgRes.blob();
+      if (blob && blob.size > 1000) {
+        const base64Data = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.readAsDataURL(blob);
+        });
+        if (base64Data) return base64Data;
+      }
+    }
+    return pollUrl;
+  } catch (pollErr) {
+    console.warn('[ImageGen] Photorealistic engine fallback exception:', pollErr);
+  }
+
+  // 3. TERTIARY STRATEGY: High-Fidelity Studio Reference Slate Canvas (Offline Safety Net)
   return generateProceduralAssetCanvas(cleanPrompt, aspectRatio);
 }
 
@@ -4201,21 +4198,21 @@ function renderSourcePackUI() {
 
     <!-- Story Elements Grid -->
     <div class="grid grid-cols-2 gap-2 text-xs">
-      <div class="p-2.5 rounded-lg bg-dark-card/60 border border-dark-border">
-        <span class="text-[10px] text-slate-500 font-bold block uppercase">Karakter</span>
-        <span class="text-slate-300 font-semibold">${sp.storyElements?.character || 'N/A'}</span>
+      <div class="p-2.5 rounded-xl bg-white/[0.035] border border-white/[0.08] backdrop-blur-md">
+        <span class="text-[10px] text-amber-400 font-bold block uppercase mb-0.5">Karakter</span>
+        <span class="text-slate-200 font-semibold text-xs">${sp.storyElements?.character || 'N/A'}</span>
       </div>
-      <div class="p-2.5 rounded-lg bg-dark-card/60 border border-dark-border">
-        <span class="text-[10px] text-slate-500 font-bold block uppercase">Objek Kunci</span>
-        <span class="text-slate-300 font-semibold">${sp.storyElements?.object || 'N/A'}</span>
+      <div class="p-2.5 rounded-xl bg-white/[0.035] border border-white/[0.08] backdrop-blur-md">
+        <span class="text-[10px] text-blue-400 font-bold block uppercase mb-0.5">Objek Kunci</span>
+        <span class="text-slate-200 font-semibold text-xs">${sp.storyElements?.object || 'N/A'}</span>
       </div>
-      <div class="p-2.5 rounded-lg bg-dark-card/60 border border-dark-border">
-        <span class="text-[10px] text-slate-500 font-bold block uppercase">Lokasi / Setting</span>
-        <span class="text-slate-300 font-semibold">${sp.storyElements?.location || 'N/A'}</span>
+      <div class="p-2.5 rounded-xl bg-white/[0.035] border border-white/[0.08] backdrop-blur-md">
+        <span class="text-[10px] text-purple-400 font-bold block uppercase mb-0.5">Lokasi / Setting</span>
+        <span class="text-slate-200 font-semibold text-xs">${sp.storyElements?.location || 'N/A'}</span>
       </div>
-      <div class="p-2.5 rounded-lg bg-dark-card/60 border border-dark-border">
-        <span class="text-[10px] text-slate-500 font-bold block uppercase">Aksi Sentral</span>
-        <span class="text-slate-300 font-semibold">${sp.storyElements?.action || 'N/A'}</span>
+      <div class="p-2.5 rounded-xl bg-white/[0.035] border border-white/[0.08] backdrop-blur-md">
+        <span class="text-[10px] text-emerald-400 font-bold block uppercase mb-0.5">Aksi Sentral</span>
+        <span class="text-slate-200 font-semibold text-xs">${sp.storyElements?.action || 'N/A'}</span>
       </div>
     </div>
 
@@ -4462,7 +4459,7 @@ function renderAssetLibraryUI() {
 
   if (library.length === 0) {
     els.assetLibraryGrid.innerHTML = `
-      <div class="col-span-full p-8 rounded-xl bg-dark-card/50 border border-dashed border-dark-border text-center space-y-2">
+      <div class="col-span-full p-8 rounded-xl bg-white/[0.035] border border-dashed border-white/[0.1] text-center space-y-2 backdrop-blur-md">
         <div class="w-10 h-10 mx-auto rounded-lg bg-dark-panel border border-dark-border flex items-center justify-center text-slate-500">
           <i data-lucide="layers" class="w-5 h-5 text-purple-400"></i>
         </div>
@@ -4565,7 +4562,7 @@ function renderAnchorBannerUI() {
           </div>
         `).join('')}
         ${activeAssets.length < 5 ? `
-          <button type="button" id="btnQuickAddAsset" class="shrink-0 rounded-lg border-2 border-dashed border-dark-border hover:border-purple-500/60 bg-dark-card/40 w-14 h-20 flex flex-col items-center justify-center text-slate-400 hover:text-purple-300 transition text-[9px] font-semibold gap-1 p-1">
+          <button type="button" id="btnQuickAddAsset" class="shrink-0 rounded-lg border-2 border-dashed border-white/[0.12] hover:border-purple-500/60 bg-white/[0.035] w-14 h-20 flex flex-col items-center justify-center text-slate-400 hover:text-purple-300 transition text-[9px] font-semibold gap-1 p-1">
             <i data-lucide="plus" class="w-4 h-4 text-purple-400"></i>
             <span>+ Acuan (${activeAssets.length}/5)</span>
           </button>
@@ -4617,7 +4614,7 @@ function renderAnchorBannerUI() {
     }
     if (els.anchorThumbTray) {
       els.anchorThumbTray.innerHTML = `
-        <div class="flex items-center gap-2 py-1 px-3 rounded-lg bg-dark-card/50 border border-dashed border-dark-border text-slate-500 text-xs">
+        <div class="flex items-center gap-2 py-1 px-3 rounded-lg bg-white/[0.035] border border-dashed border-white/[0.1] text-slate-400 text-xs backdrop-blur-md">
           <i data-lucide="layers" class="w-4 h-4 text-purple-400"></i>
           <span>Belum ada asset dipilih. Klik <strong>Kelola / Pilih Asset di Section 03</strong> untuk memilih hingga 5 acuan.</span>
         </div>
@@ -4756,23 +4753,23 @@ function renderScenesUI() {
           </div>
         </div>
 
-        <!-- Visual & Technical Specification Tags -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-          <div class="p-2 rounded-lg bg-dark-card/60 border border-dark-border">
-            <span class="text-[10px] text-slate-500 uppercase font-bold block">Komposisi</span>
-            <span class="text-slate-300 font-medium">${scene.composition || 'Medium shot'}</span>
+        <!-- Visual & Technical Specification Tags (Apple WWDC 2026 Translucent Glass) -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
+          <div class="p-2.5 rounded-xl bg-white/[0.035] border border-white/[0.08] backdrop-blur-md shadow-sm">
+            <span class="text-[10px] text-amber-400 font-bold uppercase tracking-wider block mb-0.5">Komposisi</span>
+            <span class="text-slate-200 font-medium text-xs leading-relaxed">${scene.composition || 'Medium shot'}</span>
           </div>
-          <div class="p-2 rounded-lg bg-dark-card/60 border border-dark-border">
-            <span class="text-[10px] text-slate-500 uppercase font-bold block">Kamera</span>
-            <span class="text-slate-300 font-medium">${scene.camera || 'Slow push-in'}</span>
+          <div class="p-2.5 rounded-xl bg-white/[0.035] border border-white/[0.08] backdrop-blur-md shadow-sm">
+            <span class="text-[10px] text-blue-400 font-bold uppercase tracking-wider block mb-0.5">Kamera</span>
+            <span class="text-slate-200 font-medium text-xs leading-relaxed">${scene.camera || 'Slow push-in'}</span>
           </div>
-          <div class="p-2 rounded-lg bg-dark-card/60 border border-dark-border">
-            <span class="text-[10px] text-slate-500 uppercase font-bold block">Transisi</span>
-            <span class="text-slate-300 font-medium">${scene.transition || 'Hard cut'}</span>
+          <div class="p-2.5 rounded-xl bg-white/[0.035] border border-white/[0.08] backdrop-blur-md shadow-sm">
+            <span class="text-[10px] text-purple-400 font-bold uppercase tracking-wider block mb-0.5">Transisi</span>
+            <span class="text-slate-200 font-medium text-xs leading-relaxed">${scene.transition || 'Hard cut'}</span>
           </div>
-          <div class="p-2 rounded-lg bg-dark-card/60 border border-dark-border">
-            <span class="text-[10px] text-slate-500 uppercase font-bold block">Audio / SFX</span>
-            <span class="text-slate-300 font-medium truncate block" title="${scene.sfx || ''}">${scene.sfx || 'Ambience'}</span>
+          <div class="p-2.5 rounded-xl bg-white/[0.035] border border-white/[0.08] backdrop-blur-md shadow-sm">
+            <span class="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block mb-0.5">Audio / SFX</span>
+            <span class="text-slate-200 font-medium text-xs leading-relaxed truncate block" title="${scene.sfx || ''}">${scene.sfx || 'Ambience'}</span>
           </div>
         </div>
 
